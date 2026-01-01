@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { TypingEngine } from "../src/typing-engine.js";
 import { createManualIsland } from "../src/island.manual.js";
+import { generateIsland } from "../src/island.generator.js";
 import { applyAction, countCompletedNodes, createInitialState } from "../src/island-engine.js";
+import { TypingEngine } from "../src/typing-engine.js";
+import { createSeededRandom } from "./helpers/random.js";
 
 function createRunHarness() {
   const island = createManualIsland();
@@ -126,4 +128,101 @@ test("typing engine matches prompts and clears buffer on activation", () => {
   engine.append("n");
   assert.equal(lastBuffer, " sun");
   assert.equal(lastMatchId, "wait");
+});
+
+function listGemPickups(island) {
+  const entries = [];
+  Object.values(island.nodes).forEach((node) => {
+    node.actions
+      .filter((action) => action.kind === "pickup" && action.item === "gem")
+      .forEach((action) => entries.push({ nodeId: node.id, actionId: action.id }));
+  });
+  return entries;
+}
+
+function buildMovementGraph(island) {
+  const graph = new Map();
+  Object.values(island.nodes).forEach((node) => {
+    const edges = node.actions
+      .filter((action) => action.kind === "move" && action.to)
+      .map((action) => ({ to: action.to, actionId: action.id }));
+    graph.set(node.id, edges);
+  });
+  return graph;
+}
+
+function findMovementPath(graph, start, goal) {
+  if (start === goal) {
+    return [];
+  }
+  const queue = [start];
+  const visited = new Set([start]);
+  const prev = new Map();
+  while (queue.length) {
+    const current = queue.shift();
+    const edges = graph.get(current) || [];
+    for (const edge of edges) {
+      if (visited.has(edge.to)) continue;
+      visited.add(edge.to);
+      prev.set(edge.to, { from: current, actionId: edge.actionId });
+      if (edge.to === goal) {
+        queue.length = 0;
+        break;
+      }
+      queue.push(edge.to);
+    }
+  }
+
+  if (!prev.has(goal)) {
+    throw new Error(`No path from ${start} to ${goal}`);
+  }
+
+  const path = [];
+  let cursor = goal;
+  while (cursor !== start) {
+    const link = prev.get(cursor);
+    if (!link) break;
+    path.push(link.actionId);
+    cursor = link.from;
+  }
+  return path.reverse();
+}
+
+test("generated islands can be completed via movement and pickups", () => {
+  const seeds = [3, 17, 77];
+  seeds.forEach((seed) => {
+    const island = generateIsland({ random: createSeededRandom(seed) });
+    let state = createInitialState(island);
+    const graph = buildMovementGraph(island);
+    const gemPickups = listGemPickups(island);
+    assert.equal(gemPickups.length, island.requiredGems, "generated gem count should match requirement");
+
+    function play(actionId) {
+      const result = applyAction(island, state, actionId);
+      state = result.state;
+      return result;
+    }
+
+    gemPickups.forEach((entry) => {
+      const path = findMovementPath(graph, state.currentNodeId, entry.nodeId);
+      path.forEach((moveAction) => play(moveAction));
+      const pickup = play(entry.actionId);
+      const message = pickup.events.at(-1)?.message || "";
+      assert.ok(message.includes("picked up a gem"), "pickup should emit gem toast");
+    });
+
+    const returnPath = findMovementPath(graph, state.currentNodeId, "ship");
+    returnPath.forEach((moveAction) => play(moveAction));
+
+    const finish = play("ship_leave");
+    assert.equal(finish.events.at(-1)?.message, "Success!");
+    assert.equal(state.status, "success");
+    assert.equal(state.gemsCollected, island.requiredGems);
+
+    const completed = countCompletedNodes(island, state);
+    assert.ok(
+      completed >= gemPickups.length + 1,
+      `expected at least ship plus gem hosts completed for seed ${seed}`
+    );
+  });
 });
