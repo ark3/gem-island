@@ -1,9 +1,4 @@
-const DIRECTION_DELTAS = [
-  { name: "north", label: "Go North", dx: 0, dy: -1 },
-  { name: "south", label: "Go South", dx: 0, dy: 1 },
-  { name: "west", label: "Go West", dx: -1, dy: 0 },
-  { name: "east", label: "Go East", dx: 1, dy: 0 },
-];
+import { coordinateKey, createMovementActionsForNode } from "./island-utils.js";
 
 const SURFACE_NODES = [
   {
@@ -60,26 +55,6 @@ const SURFACE_NODES = [
     ],
   },
 ];
-
-function coordinateKey(x, y) {
-  return `${x},${y}`;
-}
-
-function createMovementActionsForNode(node, nodesByCoordinate) {
-  const actions = [];
-  for (const direction of DIRECTION_DELTAS) {
-    const neighborKey = coordinateKey(node.position.x + direction.dx, node.position.y + direction.dy);
-    const neighbor = nodesByCoordinate.get(neighborKey);
-    if (!neighbor) continue;
-    actions.push({
-      id: `${node.id}_move_${direction.name}_${neighbor.id}`,
-      kind: "move",
-      label: direction.label,
-      to: neighbor.id,
-    });
-  }
-  return actions;
-}
 
 function buildNodesFromGrid() {
   const nodesByCoordinate = new Map();

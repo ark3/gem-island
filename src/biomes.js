@@ -51,3 +51,7 @@ export function resolveNodeColor(node) {
   const biome = getBiomeById(node?.biome);
   return biome.dominantColor;
 }
+
+export function listBiomes() {
+  return BIOME_LIST.map((biome) => ({ ...biome }));
+}

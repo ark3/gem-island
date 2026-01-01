@@ -1,5 +1,5 @@
 import { TypingEngine } from "./typing-engine.js";
-import { createManualIsland } from "./island.manual.js";
+import { generateIsland } from "./island.generator.js";
 import {
   applyAction,
   countCompletedNodes,
@@ -1003,7 +1003,7 @@ function handleKeydown(event) {
 }
 
 function restartIsland() {
-  island = createManualIsland();
+  island = generateIsland();
   state = createInitialState(island);
   promptService.reset();
   clearActivation();
@@ -1012,7 +1012,7 @@ function restartIsland() {
 }
 
 function boot() {
-  island = createManualIsland();
+  island = generateIsland();
   state = createInitialState(island);
   engine = new TypingEngine({
     actions: [],
