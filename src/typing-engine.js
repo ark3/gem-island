@@ -7,6 +7,11 @@ export class TypingEngine {
     this.match = null;
   }
 
+  setActions(actions) {
+    this.actions = Array.isArray(actions) ? actions : [];
+    this.emitChange();
+  }
+
   append(char) {
     this.buffer += char;
     this.emitChange();

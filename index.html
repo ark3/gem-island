@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ship</title>
+    <title>Gem Island</title>
     <style>
       :root {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -27,9 +27,24 @@
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
       }
 
+      .panel__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
       h1 {
-        margin: 0 0 16px;
+        margin: 0;
         letter-spacing: 0.04em;
+      }
+
+      .progress-panel {
+        font-size: 0.9rem;
+        color: #94a3b8;
+        text-align: right;
+        line-height: 1.4;
       }
 
       .actions {
@@ -54,6 +69,10 @@
       .action--match {
         border-color: #818cf8;
         box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+      }
+
+      .action--completed {
+        opacity: 0.55;
       }
 
       .action__label {
@@ -123,12 +142,21 @@
   </head>
   <body>
     <main class="panel">
-      <h1>Ship</h1>
+      <header class="panel__header">
+        <h1 data-node-title>Ship</h1>
+        <div class="progress-panel" data-progress>
+          <div>Gems: 0 / 0</div>
+          <div>Location: ship</div>
+          <div>Visited nodes: 1</div>
+          <div>Completed nodes: 0</div>
+        </div>
+      </header>
       <ul class="actions" data-actions></ul>
       <section>
         <div>Typed buffer:</div>
         <div class="buffer" data-buffer></div>
         <div class="message" data-message aria-live="polite"></div>
+        <div class="message" data-toast aria-live="polite"></div>
       </section>
       <p class="hint">Type the prompt text to activate an action. Backspace is supported.</p>
     </main>
