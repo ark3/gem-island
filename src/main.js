@@ -10,6 +10,7 @@ import {
 import { createPromptService } from "./prompt-service.js";
 import { getBiomeById, resolveNodeColor } from "./biomes.js";
 import { normalizeFeatureEntry } from "./features.js";
+import { drawExplorer, drawExplorerIcon } from "./explorer.js";
 
 const SUCCESS_ACTION = Object.freeze({
   id: "new-island",
@@ -276,15 +277,14 @@ function drawMapCompletionIcon(x, y, size) {
 }
 
 function drawPlayerIcon(x, y, size) {
-  const radius = Math.max(6, size * 0.2);
   mapCtx.save();
-  mapCtx.fillStyle = MAP_PLAYER_COLOR;
-  mapCtx.strokeStyle = ACCENT_COLOR;
-  mapCtx.lineWidth = 2;
-  mapCtx.beginPath();
-  mapCtx.arc(x + size / 2, y + size / 2, radius, 0, Math.PI * 2);
-  mapCtx.fill();
-  mapCtx.stroke();
+  const iconScale = clamp(size / 120, 0.4, 0.8);
+  const iconX = x + size / 2;
+  const iconY = y + size / 2 + size * 0.05;
+  drawExplorerIcon(mapCtx, iconX, iconY, iconScale, {
+    shirtPink: ACCENT_COLOR,
+    tieBlue: MAP_PLAYER_COLOR,
+  });
   mapCtx.restore();
 }
 
@@ -1033,20 +1033,30 @@ function boot() {
 
 boot();
 function drawWinScreen(width, height) {
-  const headingY = height / 2 - 40;
   sceneCtx.save();
-  sceneCtx.fillStyle = "#e2e8f0";
+  sceneCtx.fillStyle = "rgba(248, 250, 252, 0.95)";
+  sceneCtx.fillRect(0, 0, width, height);
+  sceneCtx.restore();
+
+  const headingY = Math.max(80, height * 0.25);
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#0f172a";
   sceneCtx.font = "bold 56px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   sceneCtx.textAlign = "center";
   sceneCtx.textBaseline = "middle";
   sceneCtx.fillText("You win!", width / 2, headingY);
   sceneCtx.restore();
 
+  const scale = clamp(Math.min(width, height) / 520, 0.7, 1.25);
+  const explorerBaseline = height * 0.65;
+  drawExplorer(sceneCtx, width / 2, explorerBaseline, scale);
+  const cardBase = Math.max(headingY + 60, explorerBaseline + 90);
+
   const cardWidth = 280;
   const cardHeight = 56;
   const rect = {
     x: (width - cardWidth) / 2,
-    y: headingY + 48,
+    y: Math.min(height - cardHeight - 40, cardBase),
     width: cardWidth,
     height: cardHeight,
   };
