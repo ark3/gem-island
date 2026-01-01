@@ -35,6 +35,9 @@ const PROMPT_CARD_MARGIN = 16;
 const SCENE_FRAME_COLOR = "#030712";
 const SCENE_FRAME_LINE_WIDTH = 6;
 const PATH_THICKNESS = 44;
+const MAP_BACKGROUND = "#020617";
+const MAP_GRID_COLOR = "#0f172a";
+const MAP_PLAYER_COLOR = "#f8fafc";
 
 const elements = {
   buffer: document.querySelector("[data-buffer]"),
@@ -200,14 +203,14 @@ function renderScene(node, actions) {
 }
 
 function renderMap() {
-  if (!island) return;
+  if (!island || !state) return;
   const nodes = Object.values(island.nodes || {}).filter((entry) => entry?.position);
   if (!nodes.length) return;
   const dimensions = ensureMapContext();
   if (!mapCtx || !dimensions) return;
   const { width, height } = dimensions;
   mapCtx.clearRect(0, 0, width, height);
-  mapCtx.fillStyle = "#020617";
+  mapCtx.fillStyle = MAP_BACKGROUND;
   mapCtx.fillRect(0, 0, width, height);
 
   let minX = Infinity;
@@ -222,7 +225,7 @@ function renderMap() {
   });
   const cols = Math.max(1, maxX - minX + 1);
   const rows = Math.max(1, maxY - minY + 1);
-  const padding = 16;
+  const padding = 24;
   const cellSize = Math.max(20, Math.min((width - padding * 2) / cols, (height - padding * 2) / rows));
   const contentWidth = cellSize * cols;
   const contentHeight = cellSize * rows;
@@ -234,22 +237,75 @@ function renderMap() {
     const relativeY = node.position.y - minY;
     const x = startX + relativeX * cellSize;
     const y = startY + relativeY * cellSize;
-    const color = resolveNodeColor(node) || "#1f2937";
-    mapCtx.save();
-    mapCtx.fillStyle = color;
-    mapCtx.strokeStyle = "#0f172a";
-    mapCtx.lineWidth = 2;
-    mapCtx.beginPath();
-    mapCtx.rect(x + 4, y + 4, cellSize - 8, cellSize - 8);
-    mapCtx.fill();
-    mapCtx.stroke();
-    if (state.currentNodeId === node.id) {
-      mapCtx.strokeStyle = ACCENT_COLOR;
-      mapCtx.lineWidth = 3;
-      mapCtx.strokeRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+    drawMapCell(node, x, y, cellSize);
+    if (state.status !== "success" && state.currentNodeId === node.id) {
+      drawPlayerIcon(x, y, cellSize);
     }
-    mapCtx.restore();
   });
+
+  drawMapProgress(width, height);
+}
+
+function drawMapCell(node, x, y, size) {
+  const discovered = state.visitedNodes?.has(node.id);
+  const completed = discovered && isNodeCompleted(node);
+  mapCtx.save();
+  if (discovered) {
+    mapCtx.fillStyle = resolveNodeColor(node) || "#1f2937";
+    mapCtx.fillRect(x, y, size, size);
+  } else {
+    mapCtx.strokeStyle = MAP_GRID_COLOR;
+    mapCtx.lineWidth = 2;
+    mapCtx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+  }
+  mapCtx.restore();
+  if (discovered && completed) {
+    drawMapCompletionIcon(x, y, size);
+  }
+}
+
+function drawMapCompletionIcon(x, y, size) {
+  const fontSize = Math.max(9, size * 0.28);
+  const padding = Math.max(2, size * 0.06);
+  mapCtx.save();
+  mapCtx.font = `bold ${fontSize}px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`;
+  mapCtx.textAlign = "left";
+  mapCtx.textBaseline = "top";
+  mapCtx.fillText("✅", x, y + padding);
+  mapCtx.restore();
+}
+
+function drawPlayerIcon(x, y, size) {
+  const radius = Math.max(6, size * 0.2);
+  mapCtx.save();
+  mapCtx.fillStyle = MAP_PLAYER_COLOR;
+  mapCtx.strokeStyle = ACCENT_COLOR;
+  mapCtx.lineWidth = 2;
+  mapCtx.beginPath();
+  mapCtx.arc(x + size / 2, y + size / 2, radius, 0, Math.PI * 2);
+  mapCtx.fill();
+  mapCtx.stroke();
+  mapCtx.restore();
+}
+
+function drawMapProgress(width, height) {
+  const text = `Gems ${state.gemsCollected} / ${island.requiredGems}`;
+  mapCtx.save();
+  mapCtx.fillStyle = LABEL_COLOR;
+  mapCtx.font = "600 14px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace";
+  mapCtx.textAlign = "left";
+  mapCtx.textBaseline = "top";
+  mapCtx.fillText(text, 12, 10);
+  mapCtx.restore();
+}
+
+function isNodeCompleted(node) {
+  if (!node?.actions) return false;
+  const actionable = node.actions.filter((action) => action.kind !== "move");
+  if (actionable.length === 0) {
+    return true;
+  }
+  return actionable.every((action) => state.completedActions?.has(action.id));
 }
 
 function updateBufferDisplay(text, match) {
