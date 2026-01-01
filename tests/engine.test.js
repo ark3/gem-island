@@ -3,66 +3,56 @@ import assert from "node:assert/strict";
 
 import { TypingEngine } from "../src/typing-engine.js";
 import { createManualIsland } from "../src/island.manual.js";
-import {
-  applyAction,
-  countCompletedNodes,
-  createInitialState,
-  getCurrentNode,
-  getVisibleActions,
-} from "../src/island-engine.js";
+import { applyAction, countCompletedNodes, createInitialState } from "../src/island-engine.js";
 
 function createRunHarness() {
   const island = createManualIsland();
   let state = createInitialState(island);
 
-  function playPrompt(prompt) {
-    const node = getCurrentNode(island, state);
-    const action =
-      getVisibleActions(island, state, node).find((entry) => entry.prompt === prompt) || null;
-    assert.ok(action, `No action with prompt "${prompt}" at node "${node?.id}"`);
-    const result = applyAction(island, state, action.id);
+  function playAction(actionId) {
+    const result = applyAction(island, state, actionId);
     state = result.state;
-    return { action, ...result };
+    return { actionId, ...result };
   }
 
   return {
     island,
-    playPrompt,
+    playAction,
     getState: () => state,
   };
 }
 
 test("ship refuses to leave before collecting enough gems", () => {
   const harness = createRunHarness();
-  harness.playPrompt("cat"); // ship -> beach
-  harness.playPrompt("dog"); // beach -> ship
+  harness.playAction("ship_go_beach"); // ship -> beach
+  harness.playAction("beach_back_ship"); // beach -> ship
 
-  const result = harness.playPrompt("sun");
+  const result = harness.playAction("ship_leave");
   assert.equal(harness.getState().status, "playing");
   assert.equal(result.events.at(-1).message, "You need 2 gems to finish. You have 0 gems right now.");
 });
 
 test("player can collect both gems and complete the run", () => {
   const harness = createRunHarness();
-  harness.playPrompt("cat"); // ship -> beach
+  harness.playAction("ship_go_beach");
 
-  const pickupOne = harness.playPrompt("pen");
+  const pickupOne = harness.playAction("beach_pick_gem");
   assert.equal(
     pickupOne.events.at(-1).message,
     "You picked up a gem! Now you have 1 gem."
   );
 
-  harness.playPrompt("hat"); // beach -> cave
-  const pickupTwo = harness.playPrompt("cup");
+  harness.playAction("beach_go_cave");
+  const pickupTwo = harness.playAction("cave_pick_gem");
   assert.equal(
     pickupTwo.events.at(-1).message,
     "You picked up a gem! Now you have 2 gems."
   );
 
-  harness.playPrompt("ram"); // cave -> beach
-  harness.playPrompt("dog"); // beach -> ship
+  harness.playAction("cave_back_beach");
+  harness.playAction("beach_back_ship");
 
-  const finish = harness.playPrompt("sun");
+  const finish = harness.playAction("ship_leave");
   assert.equal(finish.events.at(-1).message, "Success!");
   assert.equal(harness.getState().status, "success");
   assert.equal(countCompletedNodes(harness.island, harness.getState()), 3);
@@ -70,12 +60,12 @@ test("player can collect both gems and complete the run", () => {
 
 test("pickup actions cannot be repeated for extra gems", () => {
   const harness = createRunHarness();
-  harness.playPrompt("cat"); // ship -> beach
+  harness.playAction("ship_go_beach");
 
-  const firstPickup = harness.playPrompt("pen");
+  const firstPickup = harness.playAction("beach_pick_gem");
   assert.equal(firstPickup.events.at(-1).message, "You picked up a gem! Now you have 1 gem.");
 
-  const repeat = harness.playPrompt("pen");
+  const repeat = harness.playAction("beach_pick_gem");
   assert.equal(repeat.events.length, 0);
   assert.equal(harness.getState().gemsCollected, 1);
 });

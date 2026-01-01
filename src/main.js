@@ -1,6 +1,13 @@
 import { TypingEngine } from "./typing-engine.js";
 import { createManualIsland } from "./island.manual.js";
-import { applyAction, countCompletedNodes, createInitialState, getCurrentNode, getVisibleActions } from "./island-engine.js";
+import {
+  applyAction,
+  countCompletedNodes,
+  createInitialState,
+  getCurrentNode,
+  getVisibleActions,
+} from "./island-engine.js";
+import { createPromptService } from "./prompt-service.js";
 
 const SUCCESS_ACTION = Object.freeze({
   id: "new-island",
@@ -22,6 +29,7 @@ const actionElements = new Map();
 let engine = null;
 let island = null;
 let state = null;
+const promptService = createPromptService();
 
 function render() {
   const node = state.status === "success" ? null : getCurrentNode(island, state);
@@ -53,7 +61,15 @@ function getRenderableActions(node) {
   if (state.status === "success") {
     return [{ ...SUCCESS_ACTION, isCompleted: false }];
   }
-  return getVisibleActions(island, state, node);
+  const usedPrompts = new Set();
+  return getVisibleActions(island, state, node).map((action) => {
+    const prompt = promptService.getPrompt(action.id, usedPrompts);
+    usedPrompts.add(prompt);
+    return {
+      ...action,
+      prompt,
+    };
+  });
 }
 
 function renderActions(actions) {
@@ -150,6 +166,7 @@ function handleAction(action) {
 
   const result = applyAction(island, state, action.id);
   state = result.state;
+  promptService.refresh(action.id);
 
   result.events?.forEach((event) => {
     if (event.type === "toast") {
@@ -191,6 +208,7 @@ function handleKeydown(event) {
 function restartIsland() {
   island = createManualIsland();
   state = createInitialState(island);
+  promptService.reset();
   clearActivation();
   clearToast();
   render();
