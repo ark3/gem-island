@@ -16,10 +16,12 @@ const SUCCESS_ACTION = Object.freeze({
   prompt: "new",
 });
 
+const SCENE_DEFAULT_COLOR = "#0b1220";
+
 const elements = {
-  actions: document.querySelector("[data-actions]"),
   buffer: document.querySelector("[data-buffer]"),
   message: document.querySelector("[data-message]"),
+  scene: document.querySelector("[data-scene]"),
   toast: document.querySelector("[data-toast]"),
   title: document.querySelector("[data-node-title]"),
   progress: document.querySelector("[data-progress]"),
@@ -39,7 +41,7 @@ function render() {
 
   renderProgress();
   const actions = getRenderableActions(node);
-  renderActions(actions);
+  renderScene(node, actions);
   if (engine) {
     const interactiveActions = actions.filter((action) => !action.isCompleted);
     engine.setActions(interactiveActions);
@@ -72,12 +74,43 @@ function getRenderableActions(node) {
   });
 }
 
-function renderActions(actions) {
+function getMovementDirection(node, action) {
+  if (!node || action.kind !== "move" || !action.to) return null;
+  const destination = island?.nodes?.[action.to];
+  if (!destination || !destination.position || !node.position) {
+    return null;
+  }
+  const deltaX = destination.position.x - node.position.x;
+  const deltaY = destination.position.y - node.position.y;
+  if (deltaX === 0 && deltaY === -1) return "north";
+  if (deltaX === 0 && deltaY === 1) return "south";
+  if (deltaX === -1 && deltaY === 0) return "west";
+  if (deltaX === 1 && deltaY === 0) return "east";
+  return null;
+}
+
+function renderScene(node, actions) {
+  const color = node?.color || SCENE_DEFAULT_COLOR;
+  elements.scene.style.setProperty("--scene-color", color);
+  elements.scene.innerHTML = "";
+
+  const centerStack = document.createElement("div");
+  centerStack.className = "scene__center-stack";
+  elements.scene.appendChild(centerStack);
+
   actionElements.clear();
-  elements.actions.innerHTML = "";
+
   actions.forEach((action) => {
-    const item = document.createElement("li");
+    const item = document.createElement("div");
     item.className = "action";
+    const direction = getMovementDirection(node, action);
+    if (direction) {
+      item.classList.add("action--floating", `action--dir-${direction}`);
+    } else {
+      item.classList.add("action--center");
+      centerStack.appendChild(item);
+    }
+
     if (action.isCompleted) {
       item.classList.add("action--completed");
     }
@@ -93,9 +126,17 @@ function renderActions(actions) {
 
     item.appendChild(labelSpan);
     item.appendChild(promptSpan);
-    elements.actions.appendChild(item);
+
+    if (direction) {
+      elements.scene.appendChild(item);
+    }
+
     actionElements.set(action.id, item);
   });
+
+  if (!centerStack.hasChildNodes()) {
+    centerStack.remove();
+  }
 }
 
 function updateBufferDisplay(text, match) {

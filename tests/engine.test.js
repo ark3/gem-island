@@ -24,8 +24,8 @@ function createRunHarness() {
 
 test("ship refuses to leave before collecting enough gems", () => {
   const harness = createRunHarness();
-  harness.playAction("ship_go_beach"); // ship -> beach
-  harness.playAction("beach_back_ship"); // beach -> ship
+  harness.playAction("ship_move_north_beach"); // ship -> beach
+  harness.playAction("beach_move_south_ship"); // beach -> ship
 
   const result = harness.playAction("ship_leave");
   assert.equal(harness.getState().status, "playing");
@@ -34,7 +34,7 @@ test("ship refuses to leave before collecting enough gems", () => {
 
 test("player can collect both gems and complete the run", () => {
   const harness = createRunHarness();
-  harness.playAction("ship_go_beach");
+  harness.playAction("ship_move_north_beach");
 
   const pickupOne = harness.playAction("beach_pick_gem");
   assert.equal(
@@ -42,15 +42,15 @@ test("player can collect both gems and complete the run", () => {
     "You picked up a gem! Now you have 1 gem."
   );
 
-  harness.playAction("beach_go_cave");
+  harness.playAction("beach_move_east_cave");
   const pickupTwo = harness.playAction("cave_pick_gem");
   assert.equal(
     pickupTwo.events.at(-1).message,
     "You picked up a gem! Now you have 2 gems."
   );
 
-  harness.playAction("cave_back_beach");
-  harness.playAction("beach_back_ship");
+  harness.playAction("cave_move_west_beach");
+  harness.playAction("beach_move_south_ship");
 
   const finish = harness.playAction("ship_leave");
   assert.equal(finish.events.at(-1).message, "Success!");
@@ -60,7 +60,7 @@ test("player can collect both gems and complete the run", () => {
 
 test("pickup actions cannot be repeated for extra gems", () => {
   const harness = createRunHarness();
-  harness.playAction("ship_go_beach");
+  harness.playAction("ship_move_north_beach");
 
   const firstPickup = harness.playAction("beach_pick_gem");
   assert.equal(firstPickup.events.at(-1).message, "You picked up a gem! Now you have 1 gem.");
