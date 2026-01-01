@@ -188,9 +188,47 @@ function findMovementPath(graph, start, goal) {
   return path.reverse();
 }
 
+test("visiting generated nodes without actions immediately counts toward completion", () => {
+  const island = generateIsland({ random: createSeededRandom(31) });
+  const emptyNode = Object.values(island.nodes).find(
+    (node) => node.id !== "ship" && node.actions.every((action) => action.kind === "move")
+  );
+  assert.ok(emptyNode, "expected at least one zero-action node");
+  let state = createInitialState(island);
+  const before = countCompletedNodes(island, state);
+  const graph = buildMovementGraph(island);
+  const path = findMovementPath(graph, state.currentNodeId, emptyNode.id);
+  path.forEach((actionId) => {
+    const result = applyAction(island, state, actionId);
+    state = result.state;
+  });
+  const after = countCompletedNodes(island, state);
+  assert.ok(after > before, "visiting a zero-action node should increase completion");
+});
+
+test("completing gem hosts on generated islands advances derived completion", () => {
+  const island = generateIsland({ random: createSeededRandom(37) });
+  const gemEntry = listGemPickups(island)[0];
+  assert.ok(gemEntry, "expected at least one gem pickup");
+  let state = createInitialState(island);
+  const graph = buildMovementGraph(island);
+  const path = findMovementPath(graph, state.currentNodeId, gemEntry.nodeId);
+  path.forEach((actionId) => {
+    const result = applyAction(island, state, actionId);
+    state = result.state;
+  });
+  const before = countCompletedNodes(island, state);
+  const pickup = applyAction(island, state, gemEntry.actionId);
+  state = pickup.state;
+  const after = countCompletedNodes(island, state);
+  assert.equal(after, before + 1, "finishing the pickup should mark the host node as completed");
+});
+
 test("generated islands can be completed via movement and pickups", () => {
-  const seeds = [3, 17, 77];
-  seeds.forEach((seed) => {
+  const startSeed = 3;
+  const totalSeeds = 25;
+  for (let offset = 0; offset < totalSeeds; offset += 1) {
+    const seed = startSeed + offset;
     const island = generateIsland({ random: createSeededRandom(seed) });
     let state = createInitialState(island);
     const graph = buildMovementGraph(island);
@@ -224,5 +262,5 @@ test("generated islands can be completed via movement and pickups", () => {
       completed >= gemPickups.length + 1,
       `expected at least ship plus gem hosts completed for seed ${seed}`
     );
-  });
+  }
 });
