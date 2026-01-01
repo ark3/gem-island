@@ -136,7 +136,8 @@ Notes:
 
 - The player types freely.
 - The system matches the typed buffer against visible action prompts.
-- When a full prompt is matched exactly, the action activates.
+- When a full prompt is matched exactly, the corresponding action is highlighted.
+- The player must press Enter / Return to confirm and activate the matched action.
 - Backspace is allowed.
 - No penalties for mistakes.
 
