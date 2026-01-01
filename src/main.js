@@ -8,6 +8,8 @@ import {
   getVisibleActions,
 } from "./island-engine.js";
 import { createPromptService } from "./prompt-service.js";
+import { getBiomeById, resolveNodeColor } from "./biomes.js";
+import { normalizeFeatureEntry } from "./features.js";
 
 const SUCCESS_ACTION = Object.freeze({
   id: "new-island",
@@ -22,10 +24,14 @@ const CARD_BACKGROUND = "#0b1220";
 const CARD_BORDER = "#1f2937";
 const LABEL_COLOR = "#e2e8f0";
 const PROMPT_COLOR = "#a5b4fc";
-const CENTER_PROMPT_HEIGHT = 64;
-const CENTER_PROMPT_GAP = 16;
-const MOVEMENT_PROMPT_HEIGHT = 56;
-const MOVEMENT_PROMPT_WIDTH = 180;
+const CENTER_PROMPT_HEIGHT = 54;
+const CENTER_PROMPT_GAP = 14;
+const MOVEMENT_PROMPT_HEIGHT = 52;
+const MOVEMENT_PROMPT_WIDTH = 168;
+const FEATURE_SLOT_RADIUS = 50;
+const ANCHORED_PROMPT_WIDTH = 190;
+const ANCHORED_PROMPT_HEIGHT = 52;
+const PROMPT_CARD_MARGIN = 16;
 
 const elements = {
   buffer: document.querySelector("[data-buffer]"),
@@ -43,11 +49,13 @@ const promptService = createPromptService();
 let sceneCtx = null;
 let lastSceneNode = null;
 let lastSceneActions = [];
+let lastFeatureLayout = [];
+let lastFeatureAnchors = new Map();
 let highlightedActionId = null;
 
 function render() {
   const node = state.status === "success" ? null : getCurrentNode(island, state);
-  const title = state.status === "success" ? "Voyage Complete" : node?.title || "Unknown";
+  const title = state.status === "success" ? "You win!" : node?.title || "Unknown";
   elements.title.textContent = title;
   document.title = `Gem Island — ${title}`;
 
@@ -73,7 +81,7 @@ function renderProgress() {
 
 function getRenderableActions(node) {
   if (state.status === "success") {
-    return [{ ...SUCCESS_ACTION, isCompleted: false }];
+    return [{ ...SUCCESS_ACTION, isCompleted: false, layout: "center" }];
   }
   const usedPrompts = new Set();
   return getVisibleActions(island, state, node).map((action) => {
@@ -104,8 +112,8 @@ function getMovementDirection(node, action) {
 function ensureSceneContext() {
   const canvas = elements.scene;
   if (!canvas) return null;
-  const width = canvas.clientWidth || canvas.offsetWidth || 640;
-  const height = canvas.clientHeight || Math.max(360, Math.round(width * (9 / 16)));
+  const width = canvas.clientWidth || canvas.offsetWidth || 720;
+  const height = canvas.clientHeight || Math.max(420, Math.round(width * (3 / 4)));
   const dpr = window.devicePixelRatio || 1;
   const displayWidth = Math.round(width * dpr);
   const displayHeight = Math.round(height * dpr);
@@ -127,8 +135,9 @@ function renderScene(node, actions) {
   lastSceneActions = safeActions;
 
   const { width, height } = dimensions;
+  const color = resolveNodeColor(node) || SCENE_DEFAULT_COLOR;
   sceneCtx.clearRect(0, 0, width, height);
-  sceneCtx.fillStyle = node?.color || SCENE_DEFAULT_COLOR;
+  sceneCtx.fillStyle = color;
   sceneCtx.fillRect(0, 0, width, height);
 
   const movementEntries = [];
@@ -144,10 +153,27 @@ function renderScene(node, actions) {
     centerEntries.push(action);
   });
 
+  const normalizedFeatures = Array.isArray(node?.features)
+    ? node.features
+        .map((feature) => normalizeFeatureEntry(feature))
+        .filter(Boolean)
+    : [];
+  lastFeatureLayout = placeFeatures(normalizedFeatures, width, height);
+  lastFeatureAnchors = buildFeatureAnchors(lastFeatureLayout, width, height);
+
+  const biome = getBiomeById(node?.biome);
+  drawBiomeBase(biome, width, height);
+  drawBiomePaths(node, movementEntries, width, height);
+  drawFeatures(lastFeatureLayout);
+
   movementEntries.forEach(({ action, direction }) => {
-    drawMovementPrompt(action, direction, width, height);
+    drawMovementPrompt(node, action, direction, width, height);
   });
-  drawCenterPrompts(centerEntries, width, height);
+  if (state.status === "success") {
+    drawWinScreen(width, height);
+  } else {
+    drawActionPrompts(centerEntries, lastFeatureAnchors, width, height);
+  }
 }
 
 function updateBufferDisplay(text, match) {
@@ -192,34 +218,51 @@ function drawPromptCardBackground(x, y, width, height, isHighlighted, radius = 1
   sceneCtx.restore();
 }
 
-function drawCenterPrompts(actions, width, height) {
+function drawActionPrompts(actions, featureAnchors, width, height) {
   if (!actions.length) return;
+  const anchoredEntries = [];
+  const unanchored = [];
+  actions.forEach((action) => {
+    if (action.kind !== "move" && action.isCompleted) {
+      return;
+    }
+    const anchor = featureAnchors.get(action.id);
+    if (anchor) {
+      anchoredEntries.push({ action, anchor });
+    } else {
+      unanchored.push(action);
+    }
+  });
+
+  anchoredEntries.forEach(({ action, anchor }) => {
+    const rect = rectFromAnchor(anchor, ANCHORED_PROMPT_WIDTH, ANCHORED_PROMPT_HEIGHT, width, height);
+    drawPromptCard(action, rect);
+  });
+
+  if (!unanchored.length) return;
+
   const cardWidth = Math.min(360, width - 80);
-  const totalHeight = actions.length * CENTER_PROMPT_HEIGHT + (actions.length - 1) * CENTER_PROMPT_GAP;
+  const totalHeight = unanchored.length * CENTER_PROMPT_HEIGHT + (unanchored.length - 1) * CENTER_PROMPT_GAP;
   const startY = Math.max(20, (height - totalHeight) / 2);
   const x = (width - cardWidth) / 2;
 
-  actions.forEach((action, index) => {
+  unanchored.forEach((action, index) => {
     const y = startY + index * (CENTER_PROMPT_HEIGHT + CENTER_PROMPT_GAP);
-    const isHighlighted = action.id === highlightedActionId;
-    sceneCtx.save();
-    if (action.isCompleted) {
-      sceneCtx.globalAlpha = 0.5;
-    }
-    drawPromptCardBackground(x, y, cardWidth, CENTER_PROMPT_HEIGHT, isHighlighted);
-
-    sceneCtx.textBaseline = "middle";
-    sceneCtx.font = "700 18px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    sceneCtx.textAlign = "left";
-    sceneCtx.fillStyle = LABEL_COLOR;
-    sceneCtx.fillText(action.label, x + 16, y + CENTER_PROMPT_HEIGHT / 2);
-
-    sceneCtx.font = "600 16px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
-    sceneCtx.textAlign = "right";
-    sceneCtx.fillStyle = PROMPT_COLOR;
-    sceneCtx.fillText(action.prompt, x + cardWidth - 16, y + CENTER_PROMPT_HEIGHT / 2);
-    sceneCtx.restore();
+    drawPromptCard(action, { x, y, width: cardWidth, height: CENTER_PROMPT_HEIGHT });
   });
+}
+
+function drawPromptCard(action, rect) {
+  const isHighlighted = action.id === highlightedActionId;
+  sceneCtx.save();
+  drawPromptCardBackground(rect.x, rect.y, rect.width, rect.height, isHighlighted);
+
+  sceneCtx.textBaseline = "middle";
+  sceneCtx.font = "600 16px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+  sceneCtx.textAlign = "center";
+  sceneCtx.fillStyle = PROMPT_COLOR;
+  sceneCtx.fillText(action.prompt, rect.x + rect.width / 2, rect.y + rect.height / 2);
+  sceneCtx.restore();
 }
 
 function getMovementRect(direction, width, height) {
@@ -240,7 +283,7 @@ function getMovementRect(direction, width, height) {
   }
 }
 
-function drawMovementPrompt(action, direction, width, height) {
+function drawMovementPrompt(node, action, direction, width, height) {
   const rect = getMovementRect(direction, width, height);
   if (!rect) return;
   const isHighlighted = action.id === highlightedActionId;
@@ -248,14 +291,249 @@ function drawMovementPrompt(action, direction, width, height) {
   if (action.isCompleted) {
     sceneCtx.globalAlpha = 0.5;
   }
+  drawAdjacencyHint(node, direction, rect);
   drawPromptCardBackground(rect.x, rect.y, rect.width, rect.height, isHighlighted);
 
   sceneCtx.textBaseline = "middle";
   sceneCtx.textAlign = "center";
-  sceneCtx.font = "600 18px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+  sceneCtx.font = "600 16px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
   sceneCtx.fillStyle = PROMPT_COLOR;
   sceneCtx.fillText(action.prompt, rect.x + rect.width / 2, rect.y + rect.height / 2);
   sceneCtx.restore();
+}
+
+function drawBiomeBase(_biome, _width, _height) {
+  // Placeholder for future biome rendering logic.
+}
+
+function drawBiomePaths(node, movementEntries, width, height) {
+  if (!node || movementEntries.length === 0) return;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const pathThickness = 30;
+  movementEntries.forEach(({ direction }) => {
+    sceneCtx.save();
+    sceneCtx.fillStyle = "rgba(0, 0, 0, 0.25)";
+    switch (direction) {
+      case "north": {
+        const rectHeight = centerY - MOVEMENT_PROMPT_HEIGHT - 12;
+        sceneCtx.fillRect(
+          centerX - pathThickness / 2,
+          MOVEMENT_PROMPT_HEIGHT + 40,
+          pathThickness,
+          rectHeight
+        );
+        break;
+      }
+      case "south": {
+        const startY = centerY;
+        const rectHeight = height - startY - MOVEMENT_PROMPT_HEIGHT - 40;
+        sceneCtx.fillRect(centerX - pathThickness / 2, startY, pathThickness, rectHeight);
+        break;
+      }
+      case "west": {
+          const rectWidth = centerX - MOVEMENT_PROMPT_WIDTH - 16;
+          sceneCtx.fillRect(
+            MOVEMENT_PROMPT_WIDTH + 32,
+            centerY - pathThickness / 2,
+            rectWidth,
+            pathThickness
+          );
+          break;
+        }
+      case "east": {
+        const startX = centerX;
+        const rectWidth = width - startX - MOVEMENT_PROMPT_WIDTH - 32;
+        sceneCtx.fillRect(startX, centerY - pathThickness / 2, rectWidth, pathThickness);
+        break;
+      }
+      default:
+        break;
+    }
+    sceneCtx.restore();
+  });
+}
+
+function placeFeatures(features, width, height) {
+  const layout = [];
+  const slots = getFeatureSlots(width, height);
+  features.forEach((feature) => {
+    if (feature.isConsumable && feature.actionId && state?.completedActions?.has(feature.actionId)) {
+      return;
+    }
+    let slot = null;
+    if (feature.type === "ship") {
+      slot = {
+        id: "ship-dock",
+        x: width / 2,
+        y: Math.max(height - 140, height * 0.65),
+      };
+    } else {
+      slot = slots.shift();
+    }
+    if (!slot) return;
+    layout.push({ ...feature, slot });
+  });
+  return layout;
+}
+
+function getFeatureSlots(width, height) {
+  const center = { x: width / 2, y: height / 2 };
+  const offset = 120;
+  const slots = [
+    { id: "north", x: center.x, y: center.y - offset },
+    { id: "east", x: center.x + offset, y: center.y },
+    { id: "west", x: center.x - offset, y: center.y },
+    { id: "south", x: center.x, y: center.y + offset },
+  ];
+  slots.push({ id: "center", x: center.x, y: center.y });
+  return slots;
+}
+
+function drawFeatures(features) {
+  features.forEach((feature) => {
+    const { slot } = feature;
+    if (!slot) return;
+    switch (feature.type) {
+      case "ship":
+        drawShipFeature(slot);
+        break;
+      case "gem":
+        drawGemFeature(slot);
+        break;
+      default:
+        drawPlaceholderFeature(slot);
+        break;
+    }
+  });
+}
+
+function drawShipFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#1e3a8a";
+  sceneCtx.strokeStyle = "#0f172a";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x - 40, slot.y + 30);
+  sceneCtx.lineTo(slot.x + 40, slot.y + 30);
+  sceneCtx.lineTo(slot.x + 20, slot.y - 20);
+  sceneCtx.lineTo(slot.x - 20, slot.y - 20);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.fillStyle = "#e2e8f0";
+  sceneCtx.fillRect(slot.x - 5, slot.y - 50, 10, 30);
+  sceneCtx.fillStyle = "#94a3b8";
+  sceneCtx.fillRect(slot.x - 30, slot.y - 50, 25, 15);
+  sceneCtx.restore();
+}
+
+function drawGemFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#f472b6";
+  sceneCtx.strokeStyle = "#fbcfe8";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y - FEATURE_SLOT_RADIUS / 2);
+  sceneCtx.lineTo(slot.x + FEATURE_SLOT_RADIUS / 2, slot.y);
+  sceneCtx.lineTo(slot.x, slot.y + FEATURE_SLOT_RADIUS / 2);
+  sceneCtx.lineTo(slot.x - FEATURE_SLOT_RADIUS / 2, slot.y);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+  sceneCtx.restore();
+}
+
+function drawPlaceholderFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "rgba(15, 23, 42, 0.4)";
+  sceneCtx.beginPath();
+  sceneCtx.arc(slot.x, slot.y, FEATURE_SLOT_RADIUS / 2, 0, Math.PI * 2);
+  sceneCtx.fill();
+  sceneCtx.restore();
+}
+
+function drawAdjacencyHint(node, direction, rect) {
+  if (!node || !node.position || !island) return;
+  const neighborId = getNeighborIdForDirection(node, direction);
+  if (!neighborId) return;
+  const neighbor = island.nodes[neighborId];
+  if (!neighbor) return;
+  const color = resolveNodeColor(neighbor);
+  const pathThickness = 36;
+  sceneCtx.save();
+  sceneCtx.fillStyle = color;
+  const hintDepth = 12;
+  switch (direction) {
+    case "north":
+      sceneCtx.fillRect(rect.x, rect.y - hintDepth - 6, rect.width, hintDepth);
+      break;
+    case "south":
+      sceneCtx.fillRect(rect.x, rect.y + rect.height + 6, rect.width, hintDepth);
+      break;
+    case "west":
+      sceneCtx.fillRect(rect.x - hintDepth - 6, rect.y, hintDepth, rect.height);
+      break;
+    case "east":
+      sceneCtx.fillRect(rect.x + rect.width + 6, rect.y, hintDepth, rect.height);
+      break;
+    default:
+      break;
+  }
+  sceneCtx.restore();
+}
+
+function getNeighborIdForDirection(node, direction) {
+  if (!node?.position) return null;
+  const { x, y } = node.position;
+  switch (direction) {
+    case "north":
+      return getNodeIdAtPosition(x, y - 1);
+    case "south":
+      return getNodeIdAtPosition(x, y + 1);
+    case "west":
+      return getNodeIdAtPosition(x - 1, y);
+    case "east":
+      return getNodeIdAtPosition(x + 1, y);
+    default:
+      return null;
+  }
+}
+
+function getNodeIdAtPosition(targetX, targetY) {
+  if (!island?.nodes) return null;
+  return Object.values(island.nodes).find((node) => node.position?.x === targetX && node.position?.y === targetY)?.id || null;
+}
+
+function buildFeatureAnchors(features, width, height) {
+  const anchors = new Map();
+  features.forEach((feature) => {
+    if (!feature?.actionId || !feature?.slot) return;
+    const anchor = {
+      x: feature.slot.x,
+      y: feature.slot.y + FEATURE_SLOT_RADIUS + 28,
+    };
+    anchors.set(feature.actionId, clampAnchor(anchor, width, height));
+  });
+  return anchors;
+}
+
+function rectFromAnchor(anchor, rectWidth, rectHeight, canvasWidth, canvasHeight) {
+  const x = clamp(anchor.x - rectWidth / 2, PROMPT_CARD_MARGIN, canvasWidth - rectWidth - PROMPT_CARD_MARGIN);
+  const y = clamp(anchor.y - rectHeight / 2, PROMPT_CARD_MARGIN, canvasHeight - rectHeight - PROMPT_CARD_MARGIN);
+  return { x, y, width: rectWidth, height: rectHeight };
+}
+
+function clampAnchor(anchor, canvasWidth, canvasHeight) {
+  return {
+    x: clamp(anchor.x, PROMPT_CARD_MARGIN, canvasWidth - PROMPT_CARD_MARGIN),
+    y: clamp(anchor.y, PROMPT_CARD_MARGIN, canvasHeight - PROMPT_CARD_MARGIN),
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function showActivation(text, variant = "neutral") {
@@ -377,3 +655,23 @@ function boot() {
 }
 
 boot();
+function drawWinScreen(width, height) {
+  const headingY = height / 2 - 40;
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#e2e8f0";
+  sceneCtx.font = "bold 56px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  sceneCtx.textAlign = "center";
+  sceneCtx.textBaseline = "middle";
+  sceneCtx.fillText("You win!", width / 2, headingY);
+  sceneCtx.restore();
+
+  const cardWidth = 280;
+  const cardHeight = 56;
+  const rect = {
+    x: (width - cardWidth) / 2,
+    y: headingY + 48,
+    width: cardWidth,
+    height: cardHeight,
+  };
+  drawPromptCard({ ...SUCCESS_ACTION, prompt: SUCCESS_ACTION.prompt }, rect);
+}
