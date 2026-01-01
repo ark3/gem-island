@@ -47,94 +47,15 @@
         line-height: 1.4;
       }
 
-      .scene {
-        position: relative;
+      canvas.scene {
+        width: 100%;
+        max-width: 672px;
+        aspect-ratio: 16 / 9;
+        display: block;
+        margin-bottom: 20px;
         border-radius: 16px;
         border: 1px solid #1f2937;
-        background: var(--scene-color, #0b1220);
-        min-height: 320px;
-        margin-bottom: 20px;
-        padding: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
-
-      .scene__center-stack {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        align-items: center;
-        text-align: center;
-      }
-
-      .action {
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid #1f2937;
         background: #0b1220;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        min-width: 180px;
-        position: relative;
-        transition: border-color 120ms ease, box-shadow 120ms ease;
-      }
-
-      .action--floating {
-        position: absolute;
-      }
-
-      .action--dir-north {
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-
-      .action--dir-south {
-        bottom: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-
-      .action--dir-west {
-        left: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-      }
-
-      .action--dir-east {
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-      }
-
-      .action--match {
-        border-color: #1f2937;
-        box-shadow: none;
-      }
-      .action--match::after {
-        content: "";
-        position: absolute;
-        inset: 6px;
-        border-radius: 6px;
-        border: 2px solid rgba(244, 114, 182, 0.8);
-        pointer-events: none;
-        box-shadow: 0 0 12px rgba(244, 114, 182, 0.5);
-      }
-
-      .action--completed {
-        opacity: 0.55;
-      }
-
-      .action__label {
-        font-weight: 700;
-      }
-
-      .action__prompt {
-        font-family: "Fira Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        color: #a5b4fc;
       }
 
       .buffer {
@@ -204,7 +125,7 @@
           <div>Completed nodes: 0</div>
         </div>
       </header>
-      <section class="scene" data-scene></section>
+      <canvas class="scene" data-scene></canvas>
       <section>
         <div>Typed buffer:</div>
         <div class="buffer" data-buffer></div>
