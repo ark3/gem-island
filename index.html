@@ -14,25 +14,40 @@
       body {
         margin: 0;
         min-height: 100vh;
-        display: grid;
-        place-items: center;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 32px 20px 40px;
       }
 
       .panel {
-        width: min(720px, 90vw);
+        width: min(1100px, 96vw);
         background: #111827;
         border: 1px solid #1f2937;
         border-radius: 12px;
-        padding: 24px;
+        padding: 28px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      @media (max-height: 760px) {
+        body {
+          padding: 18px 12px 24px;
+        }
+
+        .panel {
+          padding: 22px;
+          gap: 18px;
+        }
       }
 
       .panel__header {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 1fr auto;
         align-items: flex-start;
-        gap: 16px;
-        margin-bottom: 20px;
+        gap: 20px;
       }
 
       h1 {
@@ -40,26 +55,79 @@
         letter-spacing: 0.04em;
       }
 
-      .progress-panel {
+      .panel__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
+        gap: 28px;
+        align-items: start;
+      }
+
+      @media (max-width: 920px) {
+        .panel__grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel__scene {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .panel__sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .status-card {
         font-size: 0.9rem;
         color: #94a3b8;
-        text-align: right;
         line-height: 1.4;
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px 18px;
+      }
+
+      .status-card__title {
+        margin-bottom: 6px;
+        font-size: 0.85rem;
+        color: #e2e8f0;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
 
       canvas.scene {
         width: 100%;
-        max-width: 900px;
         aspect-ratio: 4 / 3;
         display: block;
-        margin-bottom: 24px;
-        border-radius: 16px;
-        border: 1px solid #1f2937;
+        border-radius: 18px;
+        border: 2px solid #1f2937;
         background: #0b1220;
       }
 
+      @media (max-height: 760px) {
+        canvas.scene {
+          border-radius: 14px;
+          border-width: 1px;
+        }
+      }
+
+      .buffer-panel {
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 18px 20px 22px;
+      }
+
+      .buffer-label {
+        font-size: 0.9rem;
+        color: #94a3b8;
+        margin: 0 0 6px;
+      }
+
       .buffer {
-        margin-top: 4px;
         padding: 12px 14px;
         border-radius: 10px;
         border: 1px solid #1f2937;
@@ -92,8 +160,14 @@
         }
       }
 
+      .messages {
+        margin-top: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
       .message {
-        margin-top: 12px;
         min-height: 20px;
         font-weight: 600;
         color: #94a3b8;
@@ -107,32 +181,35 @@
         color: #f87171;
       }
 
-      .hint {
-        margin-top: 18px;
-        color: #94a3b8;
-        font-size: 0.95rem;
-      }
     </style>
   </head>
   <body>
     <main class="panel">
       <header class="panel__header">
         <h1 data-node-title>Ship</h1>
-        <div class="progress-panel" data-progress>
-          <div>Gems: 0 / 0</div>
-          <div>Location: ship</div>
-          <div>Visited nodes: 1</div>
-          <div>Completed nodes: 0</div>
-        </div>
       </header>
-      <canvas class="scene" data-scene></canvas>
-      <section>
-        <div>Typed buffer:</div>
-        <div class="buffer" data-buffer></div>
-        <div class="message" data-message aria-live="polite"></div>
-        <div class="message" data-toast aria-live="polite"></div>
-      </section>
-      <p class="hint">Type the prompt text to activate an action. Backspace is supported.</p>
+      <div class="panel__grid">
+        <section class="panel__scene">
+          <canvas class="scene" data-scene></canvas>
+        </section>
+        <aside class="panel__sidebar">
+          <div class="status-card" data-progress>
+            <div class="status-card__title">Status</div>
+            <div>Gems: 0 / 0</div>
+            <div>Location: ship</div>
+            <div>Visited nodes: 1</div>
+            <div>Completed nodes: 0</div>
+          </div>
+          <section class="buffer-panel">
+            <p class="buffer-label">Typed buffer</p>
+            <div class="buffer" data-buffer></div>
+            <div class="messages">
+              <div class="message" data-message aria-live="polite"></div>
+              <div class="message" data-toast aria-live="polite"></div>
+            </div>
+          </section>
+        </aside>
+      </div>
     </main>
 
     <script type="module" src="./src/main.js"></script>

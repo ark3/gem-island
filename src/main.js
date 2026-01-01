@@ -32,6 +32,9 @@ const FEATURE_SLOT_RADIUS = 50;
 const ANCHORED_PROMPT_WIDTH = 190;
 const ANCHORED_PROMPT_HEIGHT = 52;
 const PROMPT_CARD_MARGIN = 16;
+const SCENE_FRAME_COLOR = "#030712";
+const SCENE_FRAME_LINE_WIDTH = 6;
+const PATH_THICKNESS = 44;
 
 const elements = {
   buffer: document.querySelector("[data-buffer]"),
@@ -72,6 +75,7 @@ function renderProgress() {
   const visited = state.visitedNodes.size;
   const completed = countCompletedNodes(island, state);
   elements.progress.innerHTML = `
+    <div class="status-card__title">Status</div>
     <div>Gems: ${state.gemsCollected} / ${island.requiredGems}</div>
     <div>Location: ${state.currentNodeId}</div>
     <div>Visited nodes: ${visited}</div>
@@ -163,7 +167,7 @@ function renderScene(node, actions) {
 
   const biome = getBiomeById(node?.biome);
   drawBiomeBase(biome, width, height);
-  drawBiomePaths(node, movementEntries, width, height);
+  drawBiomePaths(node, movementEntries, width, height, biome);
   drawFeatures(lastFeatureLayout);
 
   movementEntries.forEach(({ action, direction }) => {
@@ -302,56 +306,255 @@ function drawMovementPrompt(node, action, direction, width, height) {
   sceneCtx.restore();
 }
 
-function drawBiomeBase(_biome, _width, _height) {
-  // Placeholder for future biome rendering logic.
+function drawBiomeBase(biome, width, height) {
+  if (!biome) {
+    drawSceneFrame(width, height);
+    return;
+  }
+
+  switch (biome.id) {
+    case "dock":
+      drawDockBiomeDetails(biome, width, height);
+      break;
+    case "beach":
+      drawBeachBiomeDetails(biome, width, height);
+      break;
+    case "cave":
+      drawCaveBiomeDetails(biome, width, height);
+      break;
+    default:
+      break;
+  }
+
+  drawSceneFrame(width, height);
 }
 
-function drawBiomePaths(node, movementEntries, width, height) {
+function drawSceneFrame(width, height) {
+  sceneCtx.save();
+  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
+  sceneCtx.lineWidth = SCENE_FRAME_LINE_WIDTH;
+  drawRoundedRectPath(
+    sceneCtx,
+    SCENE_FRAME_LINE_WIDTH,
+    SCENE_FRAME_LINE_WIDTH,
+    width - SCENE_FRAME_LINE_WIDTH * 2,
+    height - SCENE_FRAME_LINE_WIDTH * 2,
+    24
+  );
+  sceneCtx.stroke();
+  sceneCtx.restore();
+}
+
+function drawDockBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  const pierHeight = Math.min(height * 0.28, 180);
+  const pierTop = height - pierHeight;
+  sceneCtx.fillStyle = biome.edgeColor || "rgba(15, 23, 42, 0.45)";
+  sceneCtx.fillRect(0, pierTop, width, pierHeight);
+
+  sceneCtx.strokeStyle = biome.textureColor || "rgba(226, 232, 240, 0.25)";
+  sceneCtx.lineWidth = 4;
+  const plankCount = 4;
+  const plankSpacing = pierHeight / plankCount;
+  for (let i = 1; i < plankCount; i += 1) {
+    const y = pierTop + i * plankSpacing;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(0, y);
+    sceneCtx.lineTo(width, y);
+    sceneCtx.stroke();
+  }
+
+  const postCount = 3;
+  const postSpacing = width / (postCount + 1);
+  sceneCtx.fillStyle = SCENE_FRAME_COLOR;
+  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
+  sceneCtx.lineWidth = 2;
+  for (let i = 1; i <= postCount; i += 1) {
+    const x = postSpacing * i;
+    sceneCtx.beginPath();
+    sceneCtx.rect(x - 12, pierTop - 46, 24, 46);
+    sceneCtx.fill();
+    sceneCtx.stroke();
+  }
+
+  const waveCount = 4;
+  const waveSpacing = 36;
+  sceneCtx.strokeStyle = biome.accentColor || "rgba(248, 250, 252, 0.4)";
+  sceneCtx.lineWidth = 3;
+  for (let i = 0; i < waveCount; i += 1) {
+    const y = pierTop - 24 - i * waveSpacing;
+    if (y < 40) break;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(0, y);
+    const step = width / 4;
+    for (let segment = 0; segment < 4; segment += 1) {
+      const startX = segment * step;
+      const cpX = startX + step / 2;
+      const cpY = y + (segment % 2 === 0 ? 10 : -10);
+      const endX = startX + step;
+      sceneCtx.quadraticCurveTo(cpX, cpY, endX, y);
+    }
+    sceneCtx.stroke();
+  }
+
+  sceneCtx.restore();
+}
+
+function drawBeachBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  const seaHeight = Math.min(height * 0.28, 160);
+  sceneCtx.fillStyle = biome.waveColor || "#38bdf8";
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(0, 0);
+  sceneCtx.lineTo(0, seaHeight);
+  const waveSegments = 6;
+  const segmentWidth = width / waveSegments;
+  for (let i = 0; i < waveSegments; i += 1) {
+    const startX = i * segmentWidth;
+    const cpX = startX + segmentWidth / 2;
+    const cpY = seaHeight + (i % 2 === 0 ? 18 : -18);
+    const endX = startX + segmentWidth;
+    sceneCtx.quadraticCurveTo(cpX, cpY, endX, seaHeight);
+  }
+  sceneCtx.lineTo(width, 0);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+
+  drawTextureDots({
+    color: biome.textureColor || "rgba(146, 64, 14, 0.35)",
+    width,
+    height,
+    startY: seaHeight + 30,
+    endY: height - 30,
+    stepX: 80,
+    stepY: 60,
+  });
+  sceneCtx.restore();
+}
+
+function drawCaveBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  const ceilingBase = Math.min(height * 0.28, 170);
+  sceneCtx.fillStyle = biome.edgeColor || "#475569";
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(0, ceilingBase);
+  const segments = 5;
+  const segWidth = width / segments;
+  for (let i = 0; i <= segments; i += 1) {
+    const x = i * segWidth;
+    const offset = i % 2 === 0 ? -26 : 26;
+    sceneCtx.lineTo(x, ceilingBase + offset);
+  }
+  sceneCtx.lineTo(width, 0);
+  sceneCtx.lineTo(0, 0);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+
+  const floorTop = height - Math.min(height * 0.2, 120);
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(0, height);
+  sceneCtx.lineTo(0, floorTop);
+  for (let i = 0; i <= segments; i += 1) {
+    const x = i * segWidth;
+    const offset = i % 2 === 0 ? 20 : -20;
+    sceneCtx.lineTo(x, floorTop + offset);
+  }
+  sceneCtx.lineTo(width, height);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+
+  drawStalagmites({
+    color: biome.accentColor || "#1f2937",
+    width,
+    baseY: floorTop,
+    height: 60,
+    count: 4,
+  });
+  sceneCtx.restore();
+}
+
+function drawTextureDots({ color, width, height, startY, endY, stepX, stepY }) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = color;
+  const safeStartY = Math.max(startY, 40);
+  const safeEndY = Math.min(endY, height - 40);
+  for (let y = safeStartY; y < safeEndY; y += stepY) {
+    const stagger = (y / stepY) % 2 === 0 ? 0 : stepX / 2;
+    for (let x = 40 + stagger; x < width - 40; x += stepX) {
+      sceneCtx.beginPath();
+      sceneCtx.arc(x, y, 3, 0, Math.PI * 2);
+      sceneCtx.fill();
+    }
+  }
+  sceneCtx.restore();
+}
+
+function drawStalagmites({ color, width, baseY, height, count }) {
+  sceneCtx.save();
+  const spacing = width / (count + 1);
+  sceneCtx.fillStyle = color;
+  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
+  sceneCtx.lineWidth = 2;
+  for (let i = 1; i <= count; i += 1) {
+    const x = spacing * i;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(x - 18, baseY);
+    sceneCtx.lineTo(x, baseY - height);
+    sceneCtx.lineTo(x + 18, baseY);
+    sceneCtx.closePath();
+    sceneCtx.fill();
+    sceneCtx.stroke();
+  }
+  sceneCtx.restore();
+}
+
+function drawBiomePaths(node, movementEntries, width, height, biome) {
   if (!node || movementEntries.length === 0) return;
   const centerX = width / 2;
   const centerY = height / 2;
-  const pathThickness = 30;
+  const pathThickness = Math.min(PATH_THICKNESS, width * 0.08);
+  const fillColor = biome?.pathColor || "rgba(15, 23, 42, 0.35)";
+  const outlineColor = biome?.pathOutline || "rgba(15, 23, 42, 0.55)";
   movementEntries.forEach(({ direction }) => {
+    const rect = getPathRect(direction, width, height, centerX, centerY, pathThickness);
+    if (!rect) return;
     sceneCtx.save();
-    sceneCtx.fillStyle = "rgba(0, 0, 0, 0.25)";
-    switch (direction) {
-      case "north": {
-        const rectHeight = centerY - MOVEMENT_PROMPT_HEIGHT - 12;
-        sceneCtx.fillRect(
-          centerX - pathThickness / 2,
-          MOVEMENT_PROMPT_HEIGHT + 40,
-          pathThickness,
-          rectHeight
-        );
-        break;
-      }
-      case "south": {
-        const startY = centerY;
-        const rectHeight = height - startY - MOVEMENT_PROMPT_HEIGHT - 40;
-        sceneCtx.fillRect(centerX - pathThickness / 2, startY, pathThickness, rectHeight);
-        break;
-      }
-      case "west": {
-          const rectWidth = centerX - MOVEMENT_PROMPT_WIDTH - 16;
-          sceneCtx.fillRect(
-            MOVEMENT_PROMPT_WIDTH + 32,
-            centerY - pathThickness / 2,
-            rectWidth,
-            pathThickness
-          );
-          break;
-        }
-      case "east": {
-        const startX = centerX;
-        const rectWidth = width - startX - MOVEMENT_PROMPT_WIDTH - 32;
-        sceneCtx.fillRect(startX, centerY - pathThickness / 2, rectWidth, pathThickness);
-        break;
-      }
-      default:
-        break;
-    }
+    sceneCtx.fillStyle = fillColor;
+    sceneCtx.strokeStyle = outlineColor;
+    sceneCtx.lineWidth = 3;
+    drawRoundedRectPath(sceneCtx, rect.x, rect.y, rect.width, rect.height, 24);
+    sceneCtx.fill();
+    sceneCtx.stroke();
     sceneCtx.restore();
   });
+}
+
+function getPathRect(direction, width, height, centerX, centerY, thickness) {
+  const margin = 36;
+  switch (direction) {
+    case "north": {
+      const y = MOVEMENT_PROMPT_HEIGHT + margin;
+      const rectHeight = Math.max(18, centerY - y);
+      return { x: centerX - thickness / 2, y, width: thickness, height: rectHeight };
+    }
+    case "south": {
+      const startY = centerY;
+      const rectHeight = Math.max(18, height - startY - MOVEMENT_PROMPT_HEIGHT - margin);
+      return { x: centerX - thickness / 2, y: startY, width: thickness, height: rectHeight };
+    }
+    case "west": {
+      const x = MOVEMENT_PROMPT_WIDTH + margin;
+      const rectWidth = Math.max(18, centerX - x);
+      return { x, y: centerY - thickness / 2, width: rectWidth, height: thickness };
+    }
+    case "east": {
+      const startX = centerX;
+      const rectWidth = Math.max(18, width - startX - MOVEMENT_PROMPT_WIDTH - margin);
+      return { x: startX, y: centerY - thickness / 2, width: rectWidth, height: thickness };
+    }
+    default:
+      return null;
+  }
 }
 
 function placeFeatures(features, width, height) {
@@ -461,27 +664,61 @@ function drawAdjacencyHint(node, direction, rect) {
   const neighbor = island.nodes[neighborId];
   if (!neighbor) return;
   const color = resolveNodeColor(neighbor);
-  const pathThickness = 36;
+  const hintRect = getAdjacencyHintRect(direction, rect);
+  if (!hintRect) return;
   sceneCtx.save();
   sceneCtx.fillStyle = color;
-  const hintDepth = 12;
-  switch (direction) {
-    case "north":
-      sceneCtx.fillRect(rect.x, rect.y - hintDepth - 6, rect.width, hintDepth);
-      break;
-    case "south":
-      sceneCtx.fillRect(rect.x, rect.y + rect.height + 6, rect.width, hintDepth);
-      break;
-    case "west":
-      sceneCtx.fillRect(rect.x - hintDepth - 6, rect.y, hintDepth, rect.height);
-      break;
-    case "east":
-      sceneCtx.fillRect(rect.x + rect.width + 6, rect.y, hintDepth, rect.height);
-      break;
-    default:
-      break;
-  }
+  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
+  sceneCtx.lineWidth = 2;
+  drawRoundedRectPath(sceneCtx, hintRect.x, hintRect.y, hintRect.width, hintRect.height, 8);
+  sceneCtx.fill();
+  sceneCtx.stroke();
   sceneCtx.restore();
+}
+
+function getAdjacencyHintRect(direction, rect) {
+  const pad = 12;
+  const shortSide = 14;
+  switch (direction) {
+    case "north": {
+      const width = Math.min(rect.width - pad, 70);
+      return {
+        x: rect.x + (rect.width - width) / 2,
+        y: rect.y - shortSide - 10,
+        width,
+        height: shortSide,
+      };
+    }
+    case "south": {
+      const width = Math.min(rect.width - pad, 70);
+      return {
+        x: rect.x + (rect.width - width) / 2,
+        y: rect.y + rect.height + 10,
+        width,
+        height: shortSide,
+      };
+    }
+    case "west": {
+      const height = Math.min(rect.height - pad, 60);
+      return {
+        x: rect.x - shortSide - 10,
+        y: rect.y + (rect.height - height) / 2,
+        width: shortSide,
+        height,
+      };
+    }
+    case "east": {
+      const height = Math.min(rect.height - pad, 60);
+      return {
+        x: rect.x + rect.width + 10,
+        y: rect.y + (rect.height - height) / 2,
+        width: shortSide,
+        height,
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 function getNeighborIdForDirection(node, direction) {
@@ -575,14 +812,25 @@ function handleAction(action) {
     return;
   }
 
-  if (action.kind === "move" && action.to) {
-    const destination = island.nodes[action.to];
-    const destinationTitle = destination?.title || action.to;
-    showActivation(`You moved to: ${destinationTitle}`, "success");
-  } else if (action.kind === "ship") {
-    showActivation("Trying to leave the island...", "success");
-  } else {
-    showActivation(`Activated: ${action.label}`, "success");
+  switch (action.kind) {
+    case "move": {
+      if (action.to) {
+        const destination = island.nodes[action.to];
+        const destinationTitle = destination?.title || action.to;
+        showActivation(`You moved to: ${destinationTitle}`, "success");
+      }
+      break;
+    }
+    case "ship": {
+      showActivation("Trying to leave the island...", "success");
+      break;
+    }
+    case "pickup":
+      clearActivation();
+      break;
+    default: {
+      showActivation(`Activated: ${action.label}`, "success");
+    }
   }
 
   const result = applyAction(island, state, action.id);
