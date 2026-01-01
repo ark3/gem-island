@@ -43,6 +43,7 @@ const elements = {
   toast: document.querySelector("[data-toast]"),
   title: document.querySelector("[data-node-title]"),
   progress: document.querySelector("[data-progress]"),
+  map: document.querySelector("[data-map]"),
 };
 
 let engine = null;
@@ -50,6 +51,7 @@ let island = null;
 let state = null;
 const promptService = createPromptService();
 let sceneCtx = null;
+let mapCtx = null;
 let lastSceneNode = null;
 let lastSceneActions = [];
 let lastFeatureLayout = [];
@@ -63,6 +65,7 @@ function render() {
   document.title = `Gem Island — ${title}`;
 
   renderProgress();
+  renderMap();
   const actions = getRenderableActions(node);
   renderScene(node, actions);
   if (engine) {
@@ -75,9 +78,7 @@ function renderProgress() {
   const visited = state.visitedNodes.size;
   const completed = countCompletedNodes(island, state);
   elements.progress.innerHTML = `
-    <div class="status-card__title">Status</div>
     <div>Gems: ${state.gemsCollected} / ${island.requiredGems}</div>
-    <div>Location: ${state.currentNodeId}</div>
     <div>Visited nodes: ${visited}</div>
     <div>Completed nodes: ${completed}</div>
   `;
@@ -131,6 +132,24 @@ function ensureSceneContext() {
   return { width, height };
 }
 
+function ensureMapContext() {
+  const canvas = elements.map;
+  if (!canvas) return null;
+  const width = canvas.clientWidth || canvas.offsetWidth || 240;
+  const height = canvas.clientHeight || width;
+  const dpr = window.devicePixelRatio || 1;
+  const displayWidth = Math.round(width * dpr);
+  const displayHeight = Math.round(height * dpr);
+  if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  mapCtx = ctx;
+  return { width, height };
+}
+
 function renderScene(node, actions) {
   const safeActions = Array.isArray(actions) ? actions : [];
   const dimensions = ensureSceneContext();
@@ -178,6 +197,59 @@ function renderScene(node, actions) {
   } else {
     drawActionPrompts(centerEntries, lastFeatureAnchors, width, height);
   }
+}
+
+function renderMap() {
+  if (!island) return;
+  const nodes = Object.values(island.nodes || {}).filter((entry) => entry?.position);
+  if (!nodes.length) return;
+  const dimensions = ensureMapContext();
+  if (!mapCtx || !dimensions) return;
+  const { width, height } = dimensions;
+  mapCtx.clearRect(0, 0, width, height);
+  mapCtx.fillStyle = "#020617";
+  mapCtx.fillRect(0, 0, width, height);
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  nodes.forEach((node) => {
+    minX = Math.min(minX, node.position.x);
+    maxX = Math.max(maxX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxY = Math.max(maxY, node.position.y);
+  });
+  const cols = Math.max(1, maxX - minX + 1);
+  const rows = Math.max(1, maxY - minY + 1);
+  const padding = 16;
+  const cellSize = Math.max(20, Math.min((width - padding * 2) / cols, (height - padding * 2) / rows));
+  const contentWidth = cellSize * cols;
+  const contentHeight = cellSize * rows;
+  const startX = (width - contentWidth) / 2;
+  const startY = (height - contentHeight) / 2;
+
+  nodes.forEach((node) => {
+    const relativeX = node.position.x - minX;
+    const relativeY = node.position.y - minY;
+    const x = startX + relativeX * cellSize;
+    const y = startY + relativeY * cellSize;
+    const color = resolveNodeColor(node) || "#1f2937";
+    mapCtx.save();
+    mapCtx.fillStyle = color;
+    mapCtx.strokeStyle = "#0f172a";
+    mapCtx.lineWidth = 2;
+    mapCtx.beginPath();
+    mapCtx.rect(x + 4, y + 4, cellSize - 8, cellSize - 8);
+    mapCtx.fill();
+    mapCtx.stroke();
+    if (state.currentNodeId === node.id) {
+      mapCtx.strokeStyle = ACCENT_COLOR;
+      mapCtx.lineWidth = 3;
+      mapCtx.strokeRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+    }
+    mapCtx.restore();
+  });
 }
 
 function updateBufferDisplay(text, match) {
@@ -899,6 +971,7 @@ function boot() {
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("resize", () => {
     renderScene(lastSceneNode, lastSceneActions);
+    renderMap();
   });
 }
 

@@ -43,18 +43,6 @@
         }
       }
 
-      .panel__header {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        align-items: flex-start;
-        gap: 20px;
-      }
-
-      h1 {
-        margin: 0;
-        letter-spacing: 0.04em;
-      }
-
       .panel__grid {
         display: grid;
         grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
@@ -76,18 +64,39 @@
 
       .panel__sidebar {
         display: flex;
+      }
+
+      .sidebar-stack {
+        width: 100%;
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 18px 18px 16px;
+        display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 16px;
+      }
+
+      .sidebar-section + .sidebar-section {
+        padding-top: 16px;
+        border-top: 1px solid rgba(148, 163, 184, 0.12);
       }
 
       .status-card {
         font-size: 0.9rem;
         color: #94a3b8;
         line-height: 1.4;
-        background: #0b1220;
-        border: 1px solid #1f2937;
-        border-radius: 12px;
-        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .status-card__node {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 600;
+        color: #e2e8f0;
+        letter-spacing: 0.05em;
       }
 
       .status-card__title {
@@ -96,6 +105,12 @@
         color: #e2e8f0;
         letter-spacing: 0.08em;
         text-transform: uppercase;
+      }
+
+      .status-card__body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
 
       canvas.scene {
@@ -114,24 +129,33 @@
         }
       }
 
-      .buffer-panel {
-        background: #0b1220;
-        border: 1px solid #1f2937;
-        border-radius: 12px;
-        padding: 18px 20px 22px;
+      .map-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
       }
 
-      .buffer-label {
+      .map-card__title {
+        margin: 0;
         font-size: 0.9rem;
-        color: #94a3b8;
-        margin: 0 0 6px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #e5e7eb;
+      }
+
+      .map-card canvas {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 10px;
+        background: #030712;
+        border: 1px solid #1e293b;
       }
 
       .buffer {
         padding: 12px 14px;
         border-radius: 10px;
         border: 1px solid #1f2937;
-        background: #0b1220;
+        background: #030712;
         min-height: 24px;
         font-family: "Fira Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         white-space: pre-wrap;
@@ -185,29 +209,32 @@
   </head>
   <body>
     <main class="panel">
-      <header class="panel__header">
-        <h1 data-node-title>Ship</h1>
-      </header>
       <div class="panel__grid">
         <section class="panel__scene">
           <canvas class="scene" data-scene></canvas>
         </section>
         <aside class="panel__sidebar">
-          <div class="status-card" data-progress>
-            <div class="status-card__title">Status</div>
-            <div>Gems: 0 / 0</div>
-            <div>Location: ship</div>
-            <div>Visited nodes: 1</div>
-            <div>Completed nodes: 0</div>
+          <div class="sidebar-stack">
+            <section class="sidebar-section status-card">
+              <p class="status-card__node" data-node-title>Ship</p>
+              <div class="status-card__body" data-progress>
+                <div>Gems: 0 / 0</div>
+                <div>Visited nodes: 1</div>
+                <div>Completed nodes: 0</div>
+              </div>
+            </section>
+            <section class="sidebar-section map-card">
+              <p class="map-card__title">Island Map</p>
+              <canvas data-map></canvas>
+            </section>
+            <section class="sidebar-section buffer-panel">
+              <div class="buffer" data-buffer></div>
+              <div class="messages">
+                <div class="message" data-message aria-live="polite"></div>
+                <div class="message" data-toast aria-live="polite"></div>
+              </div>
+            </section>
           </div>
-          <section class="buffer-panel">
-            <p class="buffer-label">Typed buffer</p>
-            <div class="buffer" data-buffer></div>
-            <div class="messages">
-              <div class="message" data-message aria-live="polite"></div>
-              <div class="message" data-toast aria-live="polite"></div>
-            </div>
-          </section>
         </aside>
       </div>
     </main>
