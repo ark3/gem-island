@@ -2,16 +2,17 @@ import { getBiomeById, listBiomes } from "./biomes.js";
 import { CARDINAL_DIRECTIONS, coordinateKey, createMovementActionsForNode } from "./island-utils.js";
 
 export const DEFAULT_GRID_BOUNDS = Object.freeze({
-  minX: -1,
+  minX: -2,
   maxX: 2,
-  minY: -1,
-  maxY: 2,
+  minY: -3,
+  maxY: 4,
 });
 
 const MIN_SURFACE_NODES = 6;
-const MAX_SURFACE_NODES = 8;
+const MAX_SURFACE_NODES = 12;
 const MIN_GEMS = 3;
-const MAX_GEMS = 4;
+const MAX_GEMS = 6;
+const GEM_RATIO = 0.45;
 const SURFACE_BIOMES = listBiomes().filter((biome) => biome.id !== "dock");
 
 export function getShipStartPosition(bounds = DEFAULT_GRID_BOUNDS) {
@@ -170,11 +171,12 @@ function selectGemHosts(nodes, shipNode, adjacency, random) {
 }
 
 function determineGemCount(candidateCount) {
-  if (candidateCount <= MIN_GEMS) {
-    return candidateCount;
+  if (candidateCount <= 0) {
+    return 0;
   }
-  const upper = Math.min(candidateCount, MAX_GEMS);
-  return upper;
+  const scaled = Math.round(candidateCount * GEM_RATIO);
+  const minimum = Math.min(candidateCount, Math.max(MIN_GEMS, scaled));
+  return Math.min(minimum, MAX_GEMS);
 }
 
 function pickWeightedWithoutReplacement(entries, count, random) {
