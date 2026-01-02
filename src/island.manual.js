@@ -20,7 +20,7 @@ const SURFACE_NODES = [
   {
     id: "beach",
     title: "Beach",
-    biome: "beach",
+    biome: "sand",
     color: "#fbbf24",
     position: { x: 0, y: 0 },
     actions: [{ id: "beach_pick_gem", kind: "pickup", label: "Pick Up Gem", item: "gem", amount: 1 }],
@@ -37,7 +37,7 @@ const SURFACE_NODES = [
   {
     id: "cave",
     title: "Cave Entrance",
-    biome: "cave",
+    biome: "rock",
     color: "#94a3b8",
     position: { x: 1, y: 0 },
     actions: [{ id: "cave_pick_gem", kind: "pickup", label: "Pick Up Gem", item: "gem", amount: 1 }],

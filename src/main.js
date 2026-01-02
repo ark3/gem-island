@@ -195,7 +195,7 @@ function renderScene(node, actions) {
   lastFeatureAnchors = buildFeatureAnchors(lastFeatureLayout, width, height);
 
   const biome = getBiomeById(node?.biome);
-  drawBiomeBase(biome, width, height);
+  drawBiomeBase(node, movementEntries, biome, width, height);
   drawBiomePaths(node, movementEntries, width, height, biome);
   drawFeatures(lastFeatureLayout);
 
@@ -439,7 +439,7 @@ function drawMovementPrompt(node, action, direction, width, height) {
   sceneCtx.restore();
 }
 
-function drawBiomeBase(biome, width, height) {
+function drawBiomeBase(node, movementEntries, biome, width, height) {
   if (!biome) {
     drawSceneFrame(width, height);
     return;
@@ -449,11 +449,11 @@ function drawBiomeBase(biome, width, height) {
     case "dock":
       drawDockBiomeDetails(biome, width, height);
       break;
-    case "beach":
-      drawBeachBiomeDetails(biome, width, height);
+    case "sand":
+      drawSandBiomeDetails(node, biome, width, height);
       break;
-    case "cave":
-      drawCaveBiomeDetails(biome, width, height);
+    case "rock":
+      drawRockBiomeDetails(biome, width, height);
       break;
     default:
       break;
@@ -480,129 +480,396 @@ function drawSceneFrame(width, height) {
 
 function drawDockBiomeDetails(biome, width, height) {
   sceneCtx.save();
-  const pierHeight = Math.min(height * 0.28, 180);
-  const pierTop = height - pierHeight;
-  sceneCtx.fillStyle = biome.edgeColor || "rgba(15, 23, 42, 0.45)";
-  sceneCtx.fillRect(0, pierTop, width, pierHeight);
+  const waterHeight = Math.max(height * 0.45, 200);
+  const shoreHeight = height - waterHeight;
+  const pierWidth = Math.max(width * 0.28, 150);
+  const pierHeight = Math.max(waterHeight * 0.75, 200);
 
-  sceneCtx.strokeStyle = biome.textureColor || "rgba(226, 232, 240, 0.25)";
-  sceneCtx.lineWidth = 4;
-  const plankCount = 4;
-  const plankSpacing = pierHeight / plankCount;
-  for (let i = 1; i < plankCount; i += 1) {
-    const y = pierTop + i * plankSpacing;
-    sceneCtx.beginPath();
-    sceneCtx.moveTo(0, y);
-    sceneCtx.lineTo(width, y);
-    sceneCtx.stroke();
-  }
+  drawDockShore(biome, width, shoreHeight);
+  drawDockWater(biome, width, waterHeight, shoreHeight);
+  drawDockPier(biome, width, shoreHeight, pierWidth, pierHeight);
+  drawDockBoat(biome, width, waterHeight, shoreHeight);
 
-  const postCount = 3;
-  const postSpacing = width / (postCount + 1);
-  sceneCtx.fillStyle = SCENE_FRAME_COLOR;
-  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
-  sceneCtx.lineWidth = 2;
-  for (let i = 1; i <= postCount; i += 1) {
-    const x = postSpacing * i;
-    sceneCtx.beginPath();
-    sceneCtx.rect(x - 12, pierTop - 46, 24, 46);
-    sceneCtx.fill();
-    sceneCtx.stroke();
-  }
+  sceneCtx.restore();
+}
 
-  const waveCount = 4;
-  const waveSpacing = 36;
-  sceneCtx.strokeStyle = biome.accentColor || "rgba(248, 250, 252, 0.4)";
+function drawDockShore(biome, width, shoreHeight) {
+  const sandColor = "#f4d09c";
+  const grassColor = "#a7c957";
+  sceneCtx.fillStyle = grassColor;
+  sceneCtx.fillRect(0, 0, width, shoreHeight);
+  sceneCtx.fillStyle = sandColor;
+  sceneCtx.fillRect(0, shoreHeight * 0.4, width, shoreHeight * 0.6);
+  drawTextureDots({
+    color: "rgba(107, 83, 43, 0.4)",
+    width,
+    height: shoreHeight,
+    startY: shoreHeight * 0.1,
+    endY: shoreHeight * 0.9,
+    stepX: 90,
+    stepY: 50,
+  });
+}
+
+function drawDockWater(biome, width, waterHeight, shoreHeight) {
+  const gradient = sceneCtx.createLinearGradient(0, shoreHeight, 0, shoreHeight + waterHeight);
+  gradient.addColorStop(0, "#071633");
+  gradient.addColorStop(1, biome.edgeColor || "#1d4ed8");
+  sceneCtx.fillStyle = gradient;
+  sceneCtx.fillRect(0, shoreHeight, width, waterHeight);
+
+  const waveCount = 5;
+  const spacing = waterHeight / (waveCount + 1);
+  sceneCtx.strokeStyle = biome.accentColor || "rgba(219, 234, 254, 0.5)";
   sceneCtx.lineWidth = 3;
-  for (let i = 0; i < waveCount; i += 1) {
-    const y = pierTop - 24 - i * waveSpacing;
-    if (y < 40) break;
+  for (let i = 1; i <= waveCount; i += 1) {
+    const y = shoreHeight + i * spacing;
+    const step = width / 4;
     sceneCtx.beginPath();
     sceneCtx.moveTo(0, y);
-    const step = width / 4;
     for (let segment = 0; segment < 4; segment += 1) {
       const startX = segment * step;
       const cpX = startX + step / 2;
-      const cpY = y + (segment % 2 === 0 ? 10 : -10);
+      const cpY = y + (segment % 2 === 0 ? 12 : -12);
       const endX = startX + step;
       sceneCtx.quadraticCurveTo(cpX, cpY, endX, y);
     }
     sceneCtx.stroke();
   }
+}
+
+function drawDockBoat(biome, width, waterHeight, shoreHeight) {
+  const boatWidth = Math.max(140, width * 0.16);
+  const boatHeight = Math.max(70, waterHeight * 0.18);
+  const boatX = width * 0.75;
+  const boatY = shoreHeight + waterHeight * 0.35;
+  sceneCtx.save();
+  sceneCtx.translate(boatX, boatY);
+  sceneCtx.rotate(-0.1);
+  sceneCtx.fillStyle = "#1e293b";
+  sceneCtx.strokeStyle = "#0f172a";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(-boatWidth / 2, boatHeight / 2);
+  sceneCtx.lineTo(boatWidth / 2, boatHeight / 2);
+  sceneCtx.quadraticCurveTo(boatWidth / 2 + 30, 0, boatWidth / 2, -boatHeight / 2);
+  sceneCtx.lineTo(-boatWidth / 2, -boatHeight / 2);
+  sceneCtx.quadraticCurveTo(-boatWidth / 2 - 30, 0, -boatWidth / 2, boatHeight / 2);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.fillStyle = "#f8fafc";
+  sceneCtx.fillRect(-6, -boatHeight / 2 - 20, 12, 30);
+  sceneCtx.fillStyle = "#cbd5f5";
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(0, -boatHeight / 2 - 20);
+  sceneCtx.lineTo(boatWidth * 0.2, 0);
+  sceneCtx.lineTo(0, boatHeight * 0.05);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.restore();
+}
+
+function drawDockPier(biome, width, shoreHeight, pierWidth, pierHeight) {
+  const pierTop = shoreHeight;
+  const pierBottom = shoreHeight + pierHeight;
+  const pierCenter = width / 2;
+  sceneCtx.save();
+
+  // shadow
+  sceneCtx.fillStyle = "rgba(15, 23, 42, 0.35)";
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(pierCenter - pierWidth / 2 - 10, pierBottom);
+  sceneCtx.lineTo(pierCenter + pierWidth / 2 + 10, pierBottom);
+  sceneCtx.lineTo(pierCenter + pierWidth / 2, pierTop + 20);
+  sceneCtx.lineTo(pierCenter - pierWidth / 2, pierTop + 20);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+
+  // planks
+  sceneCtx.fillStyle = "#8d6b4a";
+  sceneCtx.strokeStyle = "#4b341f";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(pierCenter - pierWidth / 2, pierBottom);
+  sceneCtx.lineTo(pierCenter + pierWidth / 2, pierBottom);
+  sceneCtx.lineTo(pierCenter + pierWidth * 0.35, pierTop);
+  sceneCtx.lineTo(pierCenter - pierWidth * 0.35, pierTop);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  const plankSpacing = 36;
+  for (let y = pierBottom - plankSpacing; y > pierTop; y -= plankSpacing) {
+    const progress = (pierBottom - y) / pierHeight;
+    const widthAtY = pierWidth * (1 - 0.3 * progress);
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(pierCenter - widthAtY / 2, y);
+    sceneCtx.lineTo(pierCenter + widthAtY / 2, y);
+    sceneCtx.stroke();
+  }
+
+  // posts
+  sceneCtx.fillStyle = "#3f2c1c";
+  const postCount = 4;
+  for (let i = 0; i < postCount; i += 1) {
+    const t = i / (postCount - 1);
+    const topWidth = pierWidth * 0.35;
+    const widthAtT = topWidth + (pierWidth - topWidth) * t;
+    const xLeft = pierCenter - widthAtT / 2 - 12;
+    const xRight = pierCenter + widthAtT / 2 + 12;
+    const y = pierTop + pierHeight * t;
+    sceneCtx.fillRect(xLeft, y - 60, 18, 60);
+    sceneCtx.fillRect(xRight - 18, y - 60, 18, 60);
+  }
 
   sceneCtx.restore();
 }
 
-function drawBeachBiomeDetails(biome, width, height) {
+function drawSandBiomeDetails(node, biome, width, height) {
   sceneCtx.save();
-  const seaHeight = Math.min(height * 0.28, 160);
-  sceneCtx.fillStyle = biome.waveColor || "#38bdf8";
+  const waterColor = biome.waterColor || "#44b4e2";
+  sceneCtx.fillStyle = waterColor;
+  sceneCtx.fillRect(0, 0, width, height);
+
+  const sandRect = calculateSandRect(node, width, height);
+  const gradient = sceneCtx.createLinearGradient(0, sandRect.y, 0, sandRect.y + sandRect.height);
+  gradient.addColorStop(0, biome.sandLight || "#fef3c7");
+  gradient.addColorStop(1, biome.sandShadow || "#eab676");
+  sceneCtx.fillStyle = gradient;
+  sceneCtx.fillRect(sandRect.x, sandRect.y, sandRect.width, sandRect.height);
+
+  sceneCtx.save();
   sceneCtx.beginPath();
-  sceneCtx.moveTo(0, 0);
-  sceneCtx.lineTo(0, seaHeight);
-  const waveSegments = 6;
-  const segmentWidth = width / waveSegments;
-  for (let i = 0; i < waveSegments; i += 1) {
-    const startX = i * segmentWidth;
-    const cpX = startX + segmentWidth / 2;
-    const cpY = seaHeight + (i % 2 === 0 ? 18 : -18);
-    const endX = startX + segmentWidth;
-    sceneCtx.quadraticCurveTo(cpX, cpY, endX, seaHeight);
+  sceneCtx.rect(sandRect.x, sandRect.y, sandRect.width, sandRect.height);
+  sceneCtx.clip();
+  drawSandDunes(biome, width, height);
+  sceneCtx.restore();
+
+  drawSandWaterFoam(node, biome, sandRect, width, height);
+
+  sceneCtx.restore();
+}
+
+function drawRockBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  const baseGradient = sceneCtx.createLinearGradient(0, 0, 0, height);
+  baseGradient.addColorStop(0, biome.rockLight || "#cbd5f5");
+  baseGradient.addColorStop(1, biome.rockDark || "#4b5563");
+  sceneCtx.fillStyle = baseGradient;
+  sceneCtx.fillRect(0, 0, width, height);
+
+  drawRockPlates(biome, width, height);
+  drawRockBoulders(biome, width, height);
+  drawRockCracks(biome, width, height);
+
+  sceneCtx.restore();
+}
+
+function drawSandDunes(biome, width, height) {
+  const duneColor = biome.duneAccent || "#fca311";
+  const duneCount = 3;
+  const baseY = height * 0.58;
+  sceneCtx.save();
+  for (let i = 0; i < duneCount; i += 1) {
+    const offset = i % 2 === 0 ? 0 : 30;
+    const startX = (width / duneCount) * i - width * 0.2;
+    const duneWidth = width * 0.65;
+    sceneCtx.globalAlpha = 0.18 + i * 0.12;
+    sceneCtx.fillStyle = duneColor;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(startX, baseY + offset);
+    sceneCtx.quadraticCurveTo(startX + duneWidth / 2, baseY - 50 - offset, startX + duneWidth, baseY + offset);
+    sceneCtx.lineTo(startX + duneWidth, height);
+    sceneCtx.lineTo(startX, height);
+    sceneCtx.closePath();
+    sceneCtx.fill();
   }
-  sceneCtx.lineTo(width, 0);
-  sceneCtx.closePath();
-  sceneCtx.fill();
+  sceneCtx.restore();
 
   drawTextureDots({
-    color: biome.textureColor || "rgba(146, 64, 14, 0.35)",
+    color: "rgba(146, 64, 14, 0.25)",
     width,
     height,
-    startY: seaHeight + 30,
-    endY: height - 30,
-    stepX: 80,
-    stepY: 60,
+    startY: height * 0.35,
+    endY: height - 40,
+    stepX: 70,
+    stepY: 55,
+  });
+}
+
+function drawSandWaterFoam(node, biome, sandRect, width, height) {
+  if (!node) return;
+  const directions = ["north", "south", "east", "west"];
+  directions.forEach((direction) => {
+    if (hasNeighborInDirection(node, direction)) return;
+    drawShoreFoam(direction, biome, sandRect, width, height);
+  });
+}
+
+function drawShoreFoam(direction, biome, sandRect, width, height) {
+  const foamColor = biome.foamColor || "#fef3c7";
+  const segments = 6;
+  const amplitude = 16;
+  sceneCtx.save();
+  sceneCtx.strokeStyle = foamColor;
+  sceneCtx.lineWidth = 3;
+
+  switch (direction) {
+    case "north": {
+      const y = sandRect.y;
+      const segmentWidth = sandRect.width / segments;
+      sceneCtx.beginPath();
+      for (let i = 0; i < segments; i += 1) {
+        const startX = sandRect.x + i * segmentWidth;
+        const cpX = startX + segmentWidth / 2;
+        const cpY = y - (i % 2 === 0 ? amplitude : -amplitude);
+        const endX = startX + segmentWidth;
+        if (i === 0) sceneCtx.moveTo(startX, y);
+        sceneCtx.quadraticCurveTo(cpX, cpY, endX, y);
+      }
+      sceneCtx.stroke();
+      break;
+    }
+    case "south": {
+      const y = sandRect.y + sandRect.height;
+      const segmentWidth = sandRect.width / segments;
+      sceneCtx.beginPath();
+      for (let i = 0; i < segments; i += 1) {
+        const startX = sandRect.x + i * segmentWidth;
+        const cpX = startX + segmentWidth / 2;
+        const cpY = y + (i % 2 === 0 ? amplitude : -amplitude);
+        const endX = startX + segmentWidth;
+        if (i === 0) sceneCtx.moveTo(startX, y);
+        sceneCtx.quadraticCurveTo(cpX, cpY, endX, y);
+      }
+      sceneCtx.stroke();
+      break;
+    }
+    case "west": {
+      const x = sandRect.x;
+      const segmentHeight = sandRect.height / segments;
+      sceneCtx.beginPath();
+      for (let i = 0; i < segments; i += 1) {
+        const startY = sandRect.y + i * segmentHeight;
+        const cpY = startY + segmentHeight / 2;
+        const cpX = x - (i % 2 === 0 ? amplitude : -amplitude);
+        const endY = startY + segmentHeight;
+        if (i === 0) sceneCtx.moveTo(x, startY);
+        sceneCtx.quadraticCurveTo(cpX, cpY, x, endY);
+      }
+      sceneCtx.stroke();
+      break;
+    }
+    case "east": {
+      const x = sandRect.x + sandRect.width;
+      const segmentHeight = sandRect.height / segments;
+      sceneCtx.beginPath();
+      for (let i = 0; i < segments; i += 1) {
+        const startY = sandRect.y + i * segmentHeight;
+        const cpY = startY + segmentHeight / 2;
+        const cpX = x + (i % 2 === 0 ? amplitude : -amplitude);
+        const endY = startY + segmentHeight;
+        if (i === 0) sceneCtx.moveTo(x, startY);
+        sceneCtx.quadraticCurveTo(cpX, cpY, x, endY);
+      }
+      sceneCtx.stroke();
+      break;
+    }
+    default:
+      break;
+  }
+
+  sceneCtx.restore();
+}
+
+function calculateSandRect(node, width, height) {
+  const shoreMargin = Math.min(width, height) * 0.18;
+  const padding = 12;
+  const hasNeighbor = (direction) => (node ? hasNeighborInDirection(node, direction) : false);
+  const north = hasNeighbor("north") ? padding : shoreMargin;
+  const south = hasNeighbor("south") ? padding : shoreMargin;
+  const west = hasNeighbor("west") ? padding : shoreMargin;
+  const east = hasNeighbor("east") ? padding : shoreMargin;
+  return {
+    x: west,
+    y: north,
+    width: Math.max(40, width - west - east),
+    height: Math.max(40, height - north - south),
+  };
+}
+
+function drawRockPlates(biome, width, height) {
+  const plateColor = biome.ridgeAccent || "rgba(71, 85, 105, 0.4)";
+  const spacing = Math.max(70, Math.min(width, height) * 0.22);
+  sceneCtx.save();
+  sceneCtx.fillStyle = plateColor;
+  for (let layer = -2; layer <= 2; layer += 1) {
+    const offset = layer * spacing + spacing * 0.5;
+    const skew = layer % 2 === 0 ? width * 0.12 : width * 0.04;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(-skew, offset);
+    sceneCtx.lineTo(width + skew, offset + spacing * 0.35);
+    sceneCtx.lineTo(width + skew, offset + spacing * 0.35 + 18);
+    sceneCtx.lineTo(-skew, offset + 18);
+    sceneCtx.closePath();
+    sceneCtx.globalAlpha = 0.15 + (layer + 2) * 0.05;
+    sceneCtx.fill();
+  }
+  sceneCtx.restore();
+}
+
+function drawRockBoulders(biome, width, height) {
+  const colors = [
+    biome.rockDark || "#4b5563",
+    biome.ridgeAccent || "#475569",
+    "rgba(15, 23, 42, 0.45)",
+  ];
+  const placements = [
+    { u: 0.2, v: 0.35, scale: 1.1 },
+    { u: 0.45, v: 0.28, scale: 0.9 },
+    { u: 0.65, v: 0.4, scale: 1.3 },
+    { u: 0.35, v: 0.55, scale: 0.8 },
+    { u: 0.7, v: 0.62, scale: 1.0 },
+    { u: 0.15, v: 0.6, scale: 0.7 },
+  ];
+  sceneCtx.save();
+  placements.forEach((placement, index) => {
+    const baseRadius = Math.max(18, width * 0.04);
+    const noise = pseudoRandom(index + 1);
+    const radius = baseRadius * placement.scale * (0.85 + noise * 0.35);
+    const x = width * placement.u + (noise - 0.5) * 40;
+    const y = height * placement.v + (pseudoRandom(index + 10) - 0.5) * 30;
+    const rotation = pseudoRandom(index + 20) * Math.PI * 0.4;
+    sceneCtx.beginPath();
+    sceneCtx.ellipse(x, y, radius, radius * (0.6 + noise * 0.2), rotation, 0, Math.PI * 2);
+    sceneCtx.fillStyle = colors[index % colors.length];
+    sceneCtx.fill();
   });
   sceneCtx.restore();
 }
 
-function drawCaveBiomeDetails(biome, width, height) {
+function drawRockCracks(biome, width, height) {
   sceneCtx.save();
-  const ceilingBase = Math.min(height * 0.28, 170);
-  sceneCtx.fillStyle = biome.edgeColor || "#475569";
-  sceneCtx.beginPath();
-  sceneCtx.moveTo(0, ceilingBase);
-  const segments = 5;
-  const segWidth = width / segments;
-  for (let i = 0; i <= segments; i += 1) {
-    const x = i * segWidth;
-    const offset = i % 2 === 0 ? -26 : 26;
-    sceneCtx.lineTo(x, ceilingBase + offset);
+  sceneCtx.strokeStyle = "rgba(15, 23, 42, 0.35)";
+  sceneCtx.lineWidth = 2;
+  for (let i = 0; i < 3; i += 1) {
+    const startX = width * (0.2 + i * 0.25);
+    const startY = height * 0.2;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(startX, startY);
+    let currentX = startX;
+    let currentY = startY;
+    for (let segment = 0; segment < 4; segment += 1) {
+      currentX += (segment % 2 === 0 ? 30 : -24);
+      currentY += height * 0.15;
+      const controlX = currentX + (segment % 2 === 0 ? 12 : -12);
+      const controlY = currentY - 18;
+      sceneCtx.quadraticCurveTo(controlX, controlY, currentX, currentY);
+    }
+    sceneCtx.stroke();
   }
-  sceneCtx.lineTo(width, 0);
-  sceneCtx.lineTo(0, 0);
-  sceneCtx.closePath();
-  sceneCtx.fill();
-
-  const floorTop = height - Math.min(height * 0.2, 120);
-  sceneCtx.beginPath();
-  sceneCtx.moveTo(0, height);
-  sceneCtx.lineTo(0, floorTop);
-  for (let i = 0; i <= segments; i += 1) {
-    const x = i * segWidth;
-    const offset = i % 2 === 0 ? 20 : -20;
-    sceneCtx.lineTo(x, floorTop + offset);
-  }
-  sceneCtx.lineTo(width, height);
-  sceneCtx.closePath();
-  sceneCtx.fill();
-
-  drawStalagmites({
-    color: biome.accentColor || "#1f2937",
-    width,
-    baseY: floorTop,
-    height: 60,
-    count: 4,
-  });
   sceneCtx.restore();
 }
 
@@ -618,25 +885,6 @@ function drawTextureDots({ color, width, height, startY, endY, stepX, stepY }) {
       sceneCtx.arc(x, y, 3, 0, Math.PI * 2);
       sceneCtx.fill();
     }
-  }
-  sceneCtx.restore();
-}
-
-function drawStalagmites({ color, width, baseY, height, count }) {
-  sceneCtx.save();
-  const spacing = width / (count + 1);
-  sceneCtx.fillStyle = color;
-  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
-  sceneCtx.lineWidth = 2;
-  for (let i = 1; i <= count; i += 1) {
-    const x = spacing * i;
-    sceneCtx.beginPath();
-    sceneCtx.moveTo(x - 18, baseY);
-    sceneCtx.lineTo(x, baseY - height);
-    sceneCtx.lineTo(x + 18, baseY);
-    sceneCtx.closePath();
-    sceneCtx.fill();
-    sceneCtx.stroke();
   }
   sceneCtx.restore();
 }
@@ -701,8 +949,8 @@ function placeFeatures(features, width, height) {
     if (feature.type === "ship") {
       slot = {
         id: "ship-dock",
-        x: width / 2,
-        y: Math.max(height - 140, height * 0.65),
+        x: width * 0.35,
+        y: Math.min(height - 80, height * 0.6),
       };
     } else {
       slot = slots.shift();
@@ -871,6 +1119,11 @@ function getNeighborIdForDirection(node, direction) {
   }
 }
 
+function hasNeighborInDirection(node, direction) {
+  const neighborId = getNeighborIdForDirection(node, direction);
+  return Boolean(neighborId);
+}
+
 function getNodeIdAtPosition(targetX, targetY) {
   if (!island?.nodes) return null;
   return Object.values(island.nodes).find((node) => node.position?.x === targetX && node.position?.y === targetY)?.id || null;
@@ -904,6 +1157,11 @@ function clampAnchor(anchor, canvasWidth, canvasHeight) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function pseudoRandom(seed) {
+  const x = Math.sin(seed * 43758.5453);
+  return x - Math.floor(x);
 }
 
 function showActivation(text, variant = "neutral") {
