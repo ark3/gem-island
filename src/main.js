@@ -238,6 +238,7 @@ function renderMap() {
   const contentHeight = cellSize * rows;
   const startX = (width - contentWidth) / 2;
   const startY = (height - contentHeight) / 2;
+  const layout = { minX, minY, cellSize, startX, startY };
 
   nodes.forEach((node) => {
     const relativeX = node.position.x - minX;
@@ -250,6 +251,7 @@ function renderMap() {
     }
   });
 
+  drawMapLandmarks(island.mapLandmarks, layout);
   drawMapProgress(width, height);
 }
 
@@ -261,6 +263,8 @@ function drawMapCell(node, x, y, size) {
     mapCtx.fillStyle = resolveNodeColor(node) || "#1f2937";
     mapCtx.fillRect(x, y, size, size);
   } else {
+    mapCtx.fillStyle = "#0f172a";
+    mapCtx.fillRect(x, y, size, size);
     mapCtx.strokeStyle = MAP_GRID_COLOR;
     mapCtx.lineWidth = 2;
     mapCtx.strokeRect(x + 1, y + 1, size - 2, size - 2);
@@ -302,6 +306,47 @@ function drawMapProgress(width, height) {
   mapCtx.textAlign = "left";
   mapCtx.textBaseline = "top";
   mapCtx.fillText(text, 12, 10);
+  mapCtx.restore();
+}
+
+function drawMapLandmarks(landmarks, layout) {
+  if (!Array.isArray(landmarks) || !landmarks.length) return;
+  landmarks.forEach((landmark) => {
+    if (!landmark?.position) return;
+    const relativeX = landmark.position.x - layout.minX;
+    const relativeY = landmark.position.y - layout.minY;
+    const x = layout.startX + relativeX * layout.cellSize;
+    const y = layout.startY + relativeY * layout.cellSize;
+    drawMapLandmark(landmark, x, y, layout.cellSize);
+  });
+}
+
+function drawMapLandmark(landmark, x, y, size) {
+  if (landmark.type !== "volcano") return;
+  const inset = Math.max(2, size * 0.08);
+  mapCtx.save();
+  mapCtx.fillStyle = "#020617";
+  mapCtx.fillRect(x + inset, y + inset, size - inset * 2, size - inset * 2);
+  mapCtx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+  mapCtx.lineWidth = Math.max(1, size * 0.04);
+  mapCtx.strokeRect(x + inset, y + inset, size - inset * 2, size - inset * 2);
+  mapCtx.restore();
+
+  const centerX = x + size / 2;
+  const centerY = y + size / 2;
+  const radius = Math.max(6, size * 0.28);
+  mapCtx.save();
+  mapCtx.fillStyle = "#1f2937";
+  mapCtx.beginPath();
+  mapCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  mapCtx.fill();
+  mapCtx.strokeStyle = "#f97316";
+  mapCtx.lineWidth = Math.max(2, size * 0.06);
+  mapCtx.stroke();
+  mapCtx.fillStyle = "#fb923c";
+  mapCtx.beginPath();
+  mapCtx.arc(centerX - radius * 0.2, centerY - radius * 0.15, radius * 0.3, 0, Math.PI * 2);
+  mapCtx.fill();
   mapCtx.restore();
 }
 
@@ -1321,9 +1366,24 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function createSeededRandom(seed) {
+  let value = seed % 2147483647;
+  if (value <= 0) {
+    value += 2147483646;
+  }
+  return () => {
+    value = (value * 16807) % 2147483647;
+    return (value - 1) / 2147483646;
+  };
+}
+
 function pseudoRandom(seed) {
   const x = Math.sin(seed * 43758.5453);
   return x - Math.floor(x);
+}
+
+function nextSeed() {
+  return Math.floor(Math.random() * 1_000_000_000) + 1;
 }
 
 function showActivation(text, variant = "neutral") {
@@ -1428,7 +1488,9 @@ function handleKeydown(event) {
 }
 
 function restartIsland() {
-  island = generateIsland();
+  const seed = nextSeed();
+  island = generateIsland({ random: createSeededRandom(seed) });
+  logIsland(seed, island);
   state = createInitialState(island);
   promptService.reset();
   clearActivation();
@@ -1437,7 +1499,9 @@ function restartIsland() {
 }
 
 function boot() {
-  island = generateIsland();
+  const seed = nextSeed();
+  island = generateIsland({ random: createSeededRandom(seed) });
+  logIsland(seed, island);
   state = createInitialState(island);
   engine = new TypingEngine({
     actions: [],
@@ -1457,6 +1521,26 @@ function boot() {
 }
 
 boot();
+
+function logIsland(seed, islandData) {
+  if (!islandData) return;
+  const dump = {
+    seed,
+    requiredGems: islandData.requiredGems,
+    nodes: Object.values(islandData.nodes || {}).map((node) => ({
+      id: node.id,
+      title: node.title,
+      biome: node.biome,
+      position: node.position,
+      actions: node.actions
+        .filter((action) => action.kind === "move")
+        .map((action) => ({ id: action.id, kind: action.kind, label: action.label, to: action.to })),
+    })),
+    mapLandmarks: islandData.mapLandmarks || [],
+  };
+  console.log("Gem Island seed:", seed);
+  console.log("Gem Island map dump:", JSON.stringify(dump, null, 2));
+}
 function drawWinScreen(width, height) {
   sceneCtx.save();
   sceneCtx.fillStyle = "rgba(248, 250, 252, 0.95)";

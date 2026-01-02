@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_GRID_BOUNDS, generateIsland } from "../src/island.generator.js";
+import { DEFAULT_GRID_BOUNDS, MAX_SURFACE_NODES, MIN_SURFACE_NODES, generateIsland } from "../src/island.generator.js";
 import { CARDINAL_DIRECTIONS } from "../src/island-utils.js";
 import { createCycleRandom, createSeededRandom } from "./helpers/random.js";
 
@@ -22,7 +22,10 @@ function getGemActions(island) {
 test("generated surface nodes stay within bounds and movements are reversible", () => {
   const island = generateIsland({ random: createCycleRandom([0.1, 0.7, 0.3, 0.9]) });
   const nodes = Object.values(island.nodes);
-  assert.ok(nodes.length >= 6 && nodes.length <= 12, "node count should match configured range");
+  assert.ok(
+    nodes.length >= MIN_SURFACE_NODES && nodes.length <= MAX_SURFACE_NODES,
+    "node count should match configured range"
+  );
 
   nodes.forEach((node) => {
     assert.ok(node.position, `node ${node.id} is missing a position`);
@@ -72,7 +75,9 @@ test("generated islands expose gem pickups that match the required total", () =>
 
   const gemActions = getGemActions(island).map((entry) => entry.action);
 
-  assert.ok(gemActions.length >= 3 || nodes.length <= 4, "expected at least three gem pickups");
+  const candidateCount = nodes.length - 1;
+  const expected = candidateCount > 0 ? Math.min(candidateCount, Math.max(1, Math.round(candidateCount / 2))) : 0;
+  assert.equal(gemActions.length, expected, "expected gem pickups to scale with map size");
   assert.equal(island.requiredGems, gemActions.length, "required gem count should equal pickup actions");
 });
 
@@ -122,7 +127,7 @@ test("custom bounds and node limits are honored", () => {
   );
 });
 
-test("required gem count scales with map size and respects the configured cap", () => {
+test("required gem count scales with map size", () => {
   const island = generateIsland({
     minNodes: 16,
     maxNodes: 16,
@@ -130,10 +135,9 @@ test("required gem count scales with map size and respects the configured cap", 
   });
   const gemActions = getGemActions(island);
   const candidateCount = Object.keys(island.nodes).length - 1; // exclude ship
-  const ratioEstimate = Math.round(candidateCount * 0.45);
-  const expected = Math.min(candidateCount, Math.min(6, Math.max(3, ratioEstimate)));
+  const expected = Math.min(candidateCount, Math.max(1, Math.round(candidateCount / 2)));
   assert.equal(gemActions.length, expected, "gem placements should match the scaled requirement");
-  assert.equal(island.requiredGems, expected, "required gem count should scale with nodes and respect the cap");
+  assert.equal(island.requiredGems, expected, "required gem count should scale with nodes");
 });
 
 test("ship and gem nodes expose matching feature payloads", () => {
@@ -178,7 +182,10 @@ test("multiple seeds continue to respect generator invariants", () => {
     const seed = startSeed + offset;
     const island = generateIsland({ random: createSeededRandom(seed) });
     const nodes = Object.values(island.nodes);
-    assert.ok(nodes.length >= 6 && nodes.length <= 12, "default node range should hold");
+    assert.ok(
+      nodes.length >= MIN_SURFACE_NODES && nodes.length <= MAX_SURFACE_NODES,
+      "default node range should hold"
+    );
 
     const coordinates = new Set();
     nodes.forEach((node) => {
@@ -218,9 +225,8 @@ test("multiple seeds continue to respect generator invariants", () => {
       island.requiredGems,
       `required gem count should match pickup actions for seed ${seed}`
     );
-    assert.ok(
-      gemActions.length === 0 || gemActions.length >= 3,
-      `seed ${seed} should host at least three gems unless map is tiny`
-    );
+    const candidateCount = Object.keys(island.nodes).length - 1;
+    const expected = candidateCount > 0 ? Math.min(candidateCount, Math.max(1, Math.round(candidateCount / 2))) : 0;
+    assert.equal(gemActions.length, expected, `seed ${seed} gem count should scale with map size`);
   }
 });
