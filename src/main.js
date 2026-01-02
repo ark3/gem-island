@@ -6,6 +6,7 @@ import {
   createInitialState,
   getCurrentNode,
   getVisibleActions,
+  isNodeCompleted,
 } from "./island-engine.js";
 import { createPromptService } from "./prompt-service.js";
 import { getBiomeById, resolveNodeColor } from "./biomes.js";
@@ -182,8 +183,13 @@ function renderScene(node, actions) {
 
   const normalizedFeatures = Array.isArray(node?.features)
     ? node.features
-        .map((feature) => normalizeFeatureEntry(feature))
-        .filter(Boolean)
+        .map((feature) => {
+          const normalized = normalizeFeatureEntry(feature);
+          if (!normalized) return null;
+          const isComplete = state?.completedFeatures?.has(feature.id) ?? false;
+          return { ...normalized, isComplete };
+        })
+        .filter((feature) => feature && shouldRenderFeature(feature))
     : [];
   lastFeatureLayout = placeFeatures(normalizedFeatures, width, height);
   lastFeatureAnchors = buildFeatureAnchors(lastFeatureLayout, width, height);
@@ -249,7 +255,7 @@ function renderMap() {
 
 function drawMapCell(node, x, y, size) {
   const discovered = state.visitedNodes?.has(node.id);
-  const completed = discovered && isNodeCompleted(node);
+  const completed = discovered && isNodeCompleted(node, state);
   mapCtx.save();
   if (discovered) {
     mapCtx.fillStyle = resolveNodeColor(node) || "#1f2937";
@@ -299,13 +305,12 @@ function drawMapProgress(width, height) {
   mapCtx.restore();
 }
 
-function isNodeCompleted(node) {
-  if (!node?.actions) return false;
-  const actionable = node.actions.filter((action) => action.kind !== "move");
-  if (actionable.length === 0) {
-    return true;
+function shouldRenderFeature(feature) {
+  if (!feature) return false;
+  if (feature.type === "gem") {
+    return !feature.isComplete;
   }
-  return actionable.every((action) => state.completedActions?.has(action.id));
+  return true;
 }
 
 function updateBufferDisplay(text, match) {
@@ -689,7 +694,7 @@ function placeFeatures(features, width, height) {
   const layout = [];
   const slots = getFeatureSlots(width, height);
   features.forEach((feature) => {
-    if (feature.isConsumable && feature.actionId && state?.completedActions?.has(feature.actionId)) {
+    if (!shouldRenderFeature(feature)) {
       return;
     }
     let slot = null;

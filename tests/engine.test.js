@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { createManualIsland } from "../src/island.manual.js";
 import { generateIsland } from "../src/island.generator.js";
-import { applyAction, countCompletedNodes, createInitialState } from "../src/island-engine.js";
+import { applyAction, countCompletedNodes, createInitialState, isNodeCompleted } from "../src/island-engine.js";
 import { TypingEngine } from "../src/typing-engine.js";
 import { createSeededRandom } from "./helpers/random.js";
 
@@ -222,6 +222,30 @@ test("completing gem hosts on generated islands advances derived completion", ()
   state = pickup.state;
   const after = countCompletedNodes(island, state);
   assert.equal(after, before + 1, "finishing the pickup should mark the host node as completed");
+});
+
+test("nodes only report completion when every feature is done", () => {
+  const node = {
+    id: "test-node",
+    features: [
+      { id: "feature_one", type: "gem" },
+      { id: "feature_two", type: "ship" },
+    ],
+  };
+  const baseState = {
+    completedFeatures: new Set(),
+  };
+  assert.equal(isNodeCompleted(node, baseState), false, "no features complete yet");
+
+  const partialState = {
+    completedFeatures: new Set(["feature_one"]),
+  };
+  assert.equal(isNodeCompleted(node, partialState), false, "partial completion should not finish node");
+
+  const fullState = {
+    completedFeatures: new Set(["feature_one", "feature_two"]),
+  };
+  assert.equal(isNodeCompleted(node, fullState), true, "all features completed should finish node");
 });
 
 test("generated islands can be completed via movement and pickups", () => {

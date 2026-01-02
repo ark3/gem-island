@@ -2,14 +2,20 @@ function cloneState(state) {
   return {
     ...state,
     completedActions: new Set(state.completedActions),
+    completedFeatures: new Set(state.completedFeatures),
     visitedNodes: new Set(state.visitedNodes),
   };
 }
 
-function findActionById(island, actionId) {
+function findActionContext(island, actionId) {
   for (const node of Object.values(island.nodes)) {
     const action = node.actions.find((entry) => entry.id === actionId);
-    if (action) return action;
+    if (action) {
+      const feature = Array.isArray(node.features)
+        ? node.features.find((entry) => entry.actionId === action.id)
+        : null;
+      return { node, action, feature };
+    }
   }
   return null;
 }
@@ -24,6 +30,7 @@ export function createInitialState(_island) {
     currentNodeId: "ship",
     gemsCollected: 0,
     completedActions: new Set(),
+    completedFeatures: new Set(),
     visitedNodes: new Set(["ship"]),
     status: "playing",
   };
@@ -41,15 +48,24 @@ export function getVisibleActions(island, state, node) {
   }));
 }
 
+function addValueToSet(set, value) {
+  if (!value) return set;
+  if (set.has(value)) return set;
+  const next = new Set(set);
+  next.add(value);
+  return next;
+}
+
 export function applyAction(island, state, actionId) {
   if (state.status === "success") {
     return { state, events: [] };
   }
 
-  const action = findActionById(island, actionId);
-  if (!action) {
+  const context = findActionContext(island, actionId);
+  if (!context) {
     return { state, events: [] };
   }
+  const { action, feature } = context;
 
   const events = [];
   let nextState = cloneState(state);
@@ -71,12 +87,15 @@ export function applyAction(island, state, actionId) {
       if (nextState.completedActions.has(action.id)) {
         break;
       }
-      const completed = new Set(nextState.completedActions);
-      completed.add(action.id);
+      const completed = addValueToSet(nextState.completedActions, action.id);
       const amount = typeof action.amount === "number" ? action.amount : 0;
+      const completedFeatures = feature?.id
+        ? addValueToSet(nextState.completedFeatures, feature.id)
+        : nextState.completedFeatures;
       nextState = {
         ...nextState,
         completedActions: completed,
+        completedFeatures,
         gemsCollected: nextState.gemsCollected + amount,
       };
       events.push({
@@ -97,11 +116,14 @@ export function applyAction(island, state, actionId) {
         return { state, events };
       }
       events.push({ type: "toast", message: "Success!" });
-      const completed = new Set(nextState.completedActions);
-      completed.add(action.id);
+      const completed = addValueToSet(nextState.completedActions, action.id);
+      const completedFeatures = feature?.id
+        ? addValueToSet(nextState.completedFeatures, feature.id)
+        : nextState.completedFeatures;
       nextState = {
         ...nextState,
         completedActions: completed,
+        completedFeatures,
         status: "success",
       };
       break;
@@ -118,14 +140,18 @@ export function countCompletedNodes(island, state) {
   state.visitedNodes.forEach((nodeId) => {
     const node = island.nodes[nodeId];
     if (!node) return;
-    const nonMove = node.actions.filter((action) => action.kind !== "move");
-    if (nonMove.length === 0) {
-      completed += 1;
-      return;
-    }
-    if (nonMove.every((action) => state.completedActions.has(action.id))) {
+    if (isNodeCompleted(node, state)) {
       completed += 1;
     }
   });
   return completed;
+}
+
+export function isNodeCompleted(node, state) {
+  if (!node || !state) return false;
+  const features = Array.isArray(node.features) ? node.features : [];
+  if (features.length === 0) {
+    return true;
+  }
+  return features.every((feature) => state.completedFeatures.has(feature.id));
 }

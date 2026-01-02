@@ -36,7 +36,6 @@ export function generateIsland(options = {}) {
     id: "ship",
     title: "Ship",
     biomeId: "dock",
-    type: "start",
     position: shipPosition,
   });
   nodes.push(shipNode);
@@ -54,7 +53,6 @@ export function generateIsland(options = {}) {
       id: `node_${nodes.length}`,
       title: generateNodeTitle(biome, biomeCounters),
       biomeId: biome.id,
-      type: "path",
       position: spot,
     });
     nodes.push(node);
@@ -64,18 +62,9 @@ export function generateIsland(options = {}) {
   const adjacency = new Map();
   nodes.forEach((node) => adjacency.set(node.id, getNeighborNodes(node, nodesByCoordinate)));
 
-  nodes.forEach((node) => {
-    if (node.id === "ship") {
-      node.type = "start";
-      return;
-    }
-    const neighborCount = adjacency.get(node.id)?.length ?? 0;
-    node.type = neighborCount <= 1 ? "feature" : "path";
-  });
-
   addShipActions(shipNode);
 
-  const gemHosts = selectGemHosts(nodes, random);
+  const gemHosts = selectGemHosts(nodes, shipNode, adjacency, random);
   gemHosts.forEach((node, index) => addGemToNode(node, index));
 
   const finalNodes = {};
@@ -107,12 +96,11 @@ function isWithinBounds(x, y, bounds) {
   return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
 }
 
-function createNode({ id, title, biomeId, type, position }) {
+function createNode({ id, title, biomeId, position }) {
   const biome = getBiomeById(biomeId);
   return {
     id,
     title,
-    type,
     biome: biomeId,
     color: biome.dominantColor,
     position: { ...position },
@@ -166,19 +154,19 @@ function randomIntInRange(random, min, max) {
   return Math.floor(random() * (max - min + 1)) + min;
 }
 
-function selectGemHosts(nodes, random) {
-  const candidates = nodes.filter((node) => node.id !== "ship");
+function selectGemHosts(nodes, shipNode, adjacency, random) {
+  const candidates = nodes.filter((node) => node.id !== shipNode.id);
   if (!candidates.length) return [];
   const target = determineGemCount(candidates.length);
-  const featureNodes = candidates.filter((node) => node.type === "feature");
-  const pathNodes = candidates.filter((node) => node.type !== "feature");
-  const selected = pickWithoutReplacement(featureNodes, target, random);
-  if (selected.length < target) {
-    const remaining = target - selected.length;
-    const extras = pickWithoutReplacement(pathNodes, remaining, random);
-    selected.push(...extras);
-  }
-  return selected;
+  if (target <= 0) return [];
+  const scored = candidates.map((node) => {
+    const neighborCount = adjacency.get(node.id)?.length ?? 0;
+    return {
+      node,
+      score: calculateGemScore(node, shipNode.position, neighborCount),
+    };
+  });
+  return pickWeightedWithoutReplacement(scored, target, random);
 }
 
 function determineGemCount(candidateCount) {
@@ -189,14 +177,38 @@ function determineGemCount(candidateCount) {
   return upper;
 }
 
-function pickWithoutReplacement(source, count, random) {
-  const pool = [...source];
+function pickWeightedWithoutReplacement(entries, count, random) {
+  const pool = entries.filter((entry) => entry.score > 0);
   const result = [];
   while (pool.length && result.length < count) {
-    const index = Math.floor(random() * pool.length);
-    result.push(pool.splice(index, 1)[0]);
+    const total = pool.reduce((sum, entry) => sum + entry.score, 0);
+    if (total <= 0) {
+      result.push(pool.shift().node);
+      continue;
+    }
+    let threshold = random() * total;
+    let index = 0;
+    for (let i = 0; i < pool.length; i += 1) {
+      threshold -= pool[i].score;
+      if (threshold <= 0) {
+        index = i;
+        break;
+      }
+      index = i;
+    }
+    result.push(pool.splice(index, 1)[0].node);
   }
   return result;
+}
+
+function calculateGemScore(node, shipPosition, neighborCount) {
+  const distance =
+    node?.position && shipPosition
+      ? Math.abs(node.position.x - shipPosition.x) + Math.abs(node.position.y - shipPosition.y)
+      : 0;
+  const distanceWeight = Math.max(1, distance);
+  const deadEndBonus = neighborCount <= 1 ? 2 : 0;
+  return distanceWeight + deadEndBonus;
 }
 
 function addShipActions(node) {

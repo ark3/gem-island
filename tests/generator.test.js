@@ -221,38 +221,3 @@ test("multiple seeds continue to respect generator invariants", () => {
     );
   }
 });
-
-test("gem placement prefers feature nodes before falling back to paths", () => {
-  const seeds = [2, 11, 23, 47];
-  seeds.forEach((seed) => {
-    const island = generateIsland({ random: createSeededRandom(seed) });
-    const gemHosts = getGemActions(island).map((entry) => entry.node);
-    assert.ok(gemHosts.length > 0, "expected at least one gem host");
-    const featureCount = Object.values(island.nodes).filter((node) => node.id !== "ship" && node.type === "feature").length;
-    const pathGemHosts = gemHosts.filter((node) => node.type !== "feature");
-    const expectedPathHosts = Math.max(0, island.requiredGems - featureCount);
-    assert.equal(
-      pathGemHosts.length,
-      expectedPathHosts,
-      `seed ${seed} should only place gems on paths when features run out`
-    );
-  });
-});
-
-test("node typing matches neighbor counts for generated grids", () => {
-  const island = generateIsland({ random: createSeededRandom(29) });
-  Object.values(island.nodes).forEach((node) => {
-    if (node.id === "ship") return;
-    const neighborIds = new Set(
-      getMovementActions(node)
-        .filter((action) => action.to)
-        .map((action) => action.to)
-    );
-    const neighborCount = neighborIds.size;
-    if (neighborCount <= 1) {
-      assert.equal(node.type, "feature", `node ${node.id} should be marked as feature`);
-    } else {
-      assert.equal(node.type, "path", `node ${node.id} should be marked as path`);
-    }
-  });
-});

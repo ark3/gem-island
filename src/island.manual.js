@@ -3,7 +3,6 @@ import { coordinateKey, createMovementActionsForNode } from "./island-utils.js";
 const SURFACE_NODES = [
   {
     id: "ship",
-    type: "start",
     title: "Ship",
     biome: "dock",
     color: "#4c6ef5",
@@ -20,7 +19,6 @@ const SURFACE_NODES = [
   },
   {
     id: "beach",
-    type: "path",
     title: "Beach",
     biome: "beach",
     color: "#fbbf24",
@@ -38,7 +36,6 @@ const SURFACE_NODES = [
   },
   {
     id: "cave",
-    type: "feature",
     title: "Cave Entrance",
     biome: "cave",
     color: "#94a3b8",
@@ -70,7 +67,6 @@ function buildNodesFromGrid() {
   for (const node of SURFACE_NODES) {
     nodes[node.id] = {
       id: node.id,
-      type: node.type,
       title: node.title,
       biome: node.biome,
       color: node.color,
