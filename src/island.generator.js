@@ -8,8 +8,8 @@ export const DEFAULT_GRID_BOUNDS = Object.freeze({
   maxY: 4,
 });
 
-const MIN_SURFACE_NODES = 6;
-const MAX_SURFACE_NODES = 12;
+const MIN_SURFACE_NODES = 10;
+const MAX_SURFACE_NODES = 18;
 const MIN_GEMS = 3;
 const MAX_GEMS = 6;
 const GEM_RATIO = 0.45;
