@@ -38,6 +38,38 @@ const BIOME_LIST = [
     ridgeAccent: "#475569",
     snowCap: "#f8fafc",
   },
+  {
+    id: "forest",
+    title: "Forest",
+    dominantColor: "#0f3d2e",
+    pathColor: "rgba(15, 118, 110, 0.5)",
+    pathOutline: "rgba(4, 47, 46, 0.7)",
+    canopyLight: "#3a9b59",
+    canopyDark: "#1f6f3c",
+    trunkColor: "#5b3716",
+    groundColor: "#13452f",
+  },
+  {
+    id: "plains",
+    title: "Plains",
+    dominantColor: "#92c17b",
+    pathColor: "rgba(148, 94, 28, 0.5)",
+    pathOutline: "rgba(77, 46, 7, 0.6)",
+    grassLight: "#b9e08b",
+    grassShadow: "#7ea75c",
+    bloomColor: "#fcd34d",
+  },
+  {
+    id: "farm",
+    title: "Fields",
+    dominantColor: "#c6ad8a",
+    pathColor: "rgba(99, 63, 25, 0.55)",
+    pathOutline: "rgba(56, 30, 11, 0.6)",
+    soilDark: "#8a5a2c",
+    soilLight: "#c07d3a",
+    cropGreen: "#7cb342",
+    cropYellow: "#f5ca3a",
+  },
 ];
 
 const BIOMES = new Map(BIOME_LIST.map((biome) => [biome.id, { ...biome }]));

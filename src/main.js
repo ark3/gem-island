@@ -455,6 +455,15 @@ function drawBiomeBase(node, movementEntries, biome, width, height) {
     case "rock":
       drawRockBiomeDetails(biome, width, height);
       break;
+    case "forest":
+      drawForestBiomeDetails(biome, width, height);
+      break;
+    case "plains":
+      drawPlainsBiomeDetails(biome, width, height);
+      break;
+    case "farm":
+      drawFarmBiomeDetails(biome, width, height);
+      break;
     default:
       break;
   }
@@ -664,6 +673,41 @@ function drawRockBiomeDetails(biome, width, height) {
   drawRockBoulders(biome, width, height);
   drawRockCracks(biome, width, height);
 
+  sceneCtx.restore();
+}
+
+function drawForestBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  const gradient = sceneCtx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, biome.canopyDark || "#1f6f3c");
+  gradient.addColorStop(0.5, biome.canopyLight || "#3a9b59");
+  gradient.addColorStop(1, biome.groundColor || "#0d2f20");
+  sceneCtx.fillStyle = gradient;
+  sceneCtx.fillRect(0, 0, width, height);
+
+  drawForestMist(width, height);
+  drawForestTrees(biome, width, height);
+  sceneCtx.restore();
+}
+
+function drawPlainsBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  const gradient = sceneCtx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, biome.grassLight || "#b9e08b");
+  gradient.addColorStop(1, biome.grassShadow || "#7ea75c");
+  sceneCtx.fillStyle = gradient;
+  sceneCtx.fillRect(0, 0, width, height);
+
+  drawPlainsPatches(biome, width, height);
+  drawPlainsBrush(biome, width, height);
+  sceneCtx.restore();
+}
+
+function drawFarmBiomeDetails(biome, width, height) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = biome.soilDark || "#8a5a2c";
+  sceneCtx.fillRect(0, 0, width, height);
+  drawFarmFields(biome, width, height);
   sceneCtx.restore();
 }
 
@@ -885,6 +929,124 @@ function drawTextureDots({ color, width, height, startY, endY, stepX, stepY }) {
       sceneCtx.arc(x, y, 3, 0, Math.PI * 2);
       sceneCtx.fill();
     }
+  }
+  sceneCtx.restore();
+}
+
+function drawForestMist(width, height) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "rgba(255, 255, 255, 0.05)";
+  const bandHeight = height * 0.2;
+  for (let i = 0; i < 3; i += 1) {
+    const y = bandHeight * i + bandHeight / 2;
+    sceneCtx.beginPath();
+    sceneCtx.ellipse(width / 2, y, width * 0.7, bandHeight * 0.6, 0, 0, Math.PI * 2);
+    sceneCtx.fill();
+  }
+  sceneCtx.restore();
+}
+
+function drawForestTrees(biome, width, height) {
+  const rows = [
+    { depth: 0.45, count: 4, scale: 0.9 },
+    { depth: 0.62, count: 6, scale: 1 },
+    { depth: 0.78, count: 7, scale: 1.2 },
+  ];
+  const trunkColor = biome.trunkColor || "#5b3716";
+  const canopyLight = biome.canopyLight || "#3a9b59";
+  const canopyDark = biome.canopyDark || "#1f6f3c";
+  rows.forEach((row, rowIndex) => {
+    const y = height * row.depth;
+    for (let i = 0; i < row.count; i += 1) {
+      const t = (i + 0.5) / row.count;
+      const noise = pseudoRandom(rowIndex * 10 + i) - 0.5;
+      const x = width * t + noise * 60;
+      const trunkHeight = 30 * row.scale;
+      const canopyRadius = 28 * row.scale;
+      sceneCtx.save();
+      sceneCtx.fillStyle = trunkColor;
+      sceneCtx.fillRect(x - 5, y, 10, trunkHeight);
+      const gradient = sceneCtx.createRadialGradient(x, y, canopyRadius * 0.3, x, y, canopyRadius);
+      gradient.addColorStop(0, canopyLight);
+      gradient.addColorStop(1, canopyDark);
+      sceneCtx.fillStyle = gradient;
+      sceneCtx.beginPath();
+      sceneCtx.ellipse(x, y, canopyRadius * 1.2, canopyRadius, 0, 0, Math.PI * 2);
+      sceneCtx.fill();
+      sceneCtx.restore();
+    }
+  });
+}
+
+function drawPlainsPatches(biome, width, height) {
+  const patchCount = 4;
+  const colors = [biome.bloomColor || "#fcd34d", "rgba(255, 255, 255, 0.25)"];
+  for (let i = 0; i < patchCount; i += 1) {
+    const noise = pseudoRandom(200 + i);
+    const x = width * ((i + 1) / (patchCount + 1)) + (noise - 0.5) * 60;
+    const y = height * (0.4 + 0.2 * noise);
+    const rx = width * 0.18;
+    const ry = height * 0.08;
+    sceneCtx.save();
+    sceneCtx.translate(x, y);
+    sceneCtx.rotate((noise - 0.5) * 0.4);
+    sceneCtx.fillStyle = colors[i % colors.length];
+    sceneCtx.globalAlpha = 0.2;
+    sceneCtx.beginPath();
+    sceneCtx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    sceneCtx.fill();
+    sceneCtx.restore();
+  }
+}
+
+function drawPlainsBrush(biome, width, height) {
+  const strokeCount = 18;
+  sceneCtx.save();
+  sceneCtx.lineWidth = 6;
+  for (let i = 0; i < strokeCount; i += 1) {
+    const noise = pseudoRandom(300 + i);
+    const x = width * noise;
+    const y = height * (0.35 + 0.5 * pseudoRandom(320 + i));
+    const length = 30 + 20 * pseudoRandom(340 + i);
+    const angle = -Math.PI / 2 + (noise - 0.5) * 0.6;
+    sceneCtx.strokeStyle = i % 2 === 0 ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.12)";
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(x, y);
+    sceneCtx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+    sceneCtx.stroke();
+  }
+  sceneCtx.restore();
+}
+
+function drawFarmFields(biome, width, height) {
+  const rowCount = 5;
+  const colors = [biome.cropGreen || "#7cb342", biome.cropYellow || "#f5ca3a", biome.soilLight || "#c07d3a"];
+  const rowHeight = height / rowCount;
+  for (let i = 0; i < rowCount; i += 1) {
+    const y = i * rowHeight;
+    sceneCtx.fillStyle = colors[i % colors.length];
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(-40, y);
+    sceneCtx.lineTo(width + 40, y + rowHeight * 0.2);
+    sceneCtx.lineTo(width + 40, y + rowHeight);
+    sceneCtx.lineTo(-40, y + rowHeight * 0.8);
+    sceneCtx.closePath();
+    sceneCtx.fill();
+    sceneCtx.strokeStyle = "rgba(0,0,0,0.1)";
+    sceneCtx.lineWidth = 2;
+    sceneCtx.stroke();
+  }
+  // divider lines
+  sceneCtx.save();
+  sceneCtx.strokeStyle = "rgba(15, 23, 42, 0.2)";
+  sceneCtx.lineWidth = 3;
+  const columnCount = 4;
+  for (let col = 0; col <= columnCount; col += 1) {
+    const x = (width / columnCount) * col;
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(x, 0);
+    sceneCtx.lineTo(x - 30, height);
+    sceneCtx.stroke();
   }
   sceneCtx.restore();
 }
