@@ -68,6 +68,7 @@ export function generateIsland(options = {}) {
   assignBiomesToSurfaceNodes(nodes, shipNode, nodesByCoordinate, random, biomeCounters);
 
   addShipActions(shipNode);
+  addBeachPerson(nodes, shipNode);
 
   const gemHosts = selectGemHosts(nodes, shipNode, adjacency, random);
   gemHosts.forEach((node, index) => addGemToNode(node, index));
@@ -481,6 +482,25 @@ function addShipActions(node) {
   });
 }
 
+function addBeachPerson(nodes, shipNode) {
+  const candidates = nodes.filter((node) => node.id !== shipNode.id && node.biome === SAND_BIOME_ID);
+  if (!candidates.length) return;
+  const target = findNearestNode(candidates, shipNode.position);
+  if (!target) return;
+  const actionId = `${target.id}_say_surfer`;
+  target.actions.push({
+    id: actionId,
+    kind: "say",
+    label: "Say hi",
+    message: "Surf's up, dude!",
+  });
+  target.features.push({
+    id: `${target.id}_surfer_feature`,
+    type: "person",
+    actionId,
+  });
+}
+
 function addGemToNode(node) {
   const actionId = `${node.id}_pickup_gem`;
   node.actions.push({
@@ -497,4 +517,19 @@ function addGemToNode(node) {
     amount: 1,
     item: "gem",
   });
+}
+
+function findNearestNode(nodes, position) {
+  if (!position) return nodes[0] || null;
+  return nodes.reduce((nearest, node) => {
+    if (!node?.position) return nearest;
+    const distance = Math.abs(node.position.x - position.x) + Math.abs(node.position.y - position.y);
+    if (!nearest) {
+      return { node, distance };
+    }
+    if (distance < nearest.distance) {
+      return { node, distance };
+    }
+    return nearest;
+  }, null)?.node;
 }

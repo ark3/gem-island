@@ -1,10 +1,5 @@
 # High-Level Tasks
 
-## Track: Typing Progression
-- Characterize player's typing ability.
-- Implement letter/word difficulty characterization.
-- Adjust action prompt difficulty based on player progress.
-
 ## Track: Inventory, Actions, Quests
 - Transition from `gemsCollected: number` to a generic inventory map (e.g., `{"gem": 5, "shell": 2}`).
 - Update reducer to handle generic item pickups.
@@ -21,3 +16,12 @@
 - DONE: Add more biomes (forest, desert, others?).
 - Improve path rendering.
 - Improve feature rendering.
+
+## Track: Typing Progression
+- Characterize player's typing ability.
+- Implement letter/word difficulty characterization.
+- Adjust action prompt difficulty based on player progress.
+
+## Track: Pockets aka Sub-Areas
+- Figure out a compelling reason to implement this.
+

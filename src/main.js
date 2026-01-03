@@ -1192,6 +1192,12 @@ function drawFeatures(features) {
       case "gem":
         drawGemFeature(slot);
         break;
+      case "sign":
+        drawSignFeature(slot);
+        break;
+      case "person":
+        drawPersonFeature(slot);
+        break;
       default:
         drawPlaceholderFeature(slot);
         break;
@@ -1217,6 +1223,54 @@ function drawShipFeature(slot) {
   sceneCtx.fillRect(slot.x - 5, slot.y - 50, 10, 30);
   sceneCtx.fillStyle = "#94a3b8";
   sceneCtx.fillRect(slot.x - 30, slot.y - 50, 25, 15);
+  sceneCtx.restore();
+}
+
+function drawSignFeature(slot) {
+  sceneCtx.save();
+  const postHeight = 50;
+  const postWidth = 12;
+  sceneCtx.fillStyle = "#7c3f1d";
+  sceneCtx.fillRect(slot.x - postWidth / 2, slot.y, postWidth, postHeight);
+
+  const boardWidth = 90;
+  const boardHeight = 44;
+  const boardX = slot.x - boardWidth / 2;
+  const boardY = slot.y - boardHeight + 6;
+  sceneCtx.fillStyle = "#f8dca8";
+  sceneCtx.strokeStyle = "#8b5e34";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.fillRect(boardX, boardY, boardWidth, boardHeight);
+  sceneCtx.strokeRect(boardX, boardY, boardWidth, boardHeight);
+
+  sceneCtx.fillStyle = "#6b4b2c";
+  sceneCtx.fillRect(boardX + 10, boardY + 12, boardWidth - 20, 6);
+  sceneCtx.fillRect(boardX + 16, boardY + 24, boardWidth - 32, 6);
+  sceneCtx.restore();
+}
+
+function drawPersonFeature(slot) {
+  sceneCtx.save();
+  const headRadius = 16;
+  sceneCtx.fillStyle = "#fbd2b6";
+  sceneCtx.beginPath();
+  sceneCtx.arc(slot.x, slot.y - 26, headRadius, 0, Math.PI * 2);
+  sceneCtx.fill();
+
+  sceneCtx.fillStyle = "#38bdf8";
+  sceneCtx.strokeStyle = "#0ea5e9";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x - 22, slot.y - 6);
+  sceneCtx.lineTo(slot.x + 22, slot.y - 6);
+  sceneCtx.lineTo(slot.x + 16, slot.y + 34);
+  sceneCtx.lineTo(slot.x - 16, slot.y + 34);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.fillStyle = "#0f172a";
+  sceneCtx.fillRect(slot.x - 14, slot.y + 34, 28, 18);
   sceneCtx.restore();
 }
 
@@ -1441,6 +1495,11 @@ function handleAction(action) {
     case "pickup":
       clearActivation();
       break;
+    case "say": {
+      const message = action.message || action.label || "Hello!";
+      showActivation(message, "success");
+      break;
+    }
     default: {
       showActivation(`Activated: ${action.label}`, "success");
     }

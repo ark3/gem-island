@@ -7,6 +7,8 @@ const FALLBACK_FEATURE = Object.freeze({
 const FEATURE_LIST = [
   { id: "ship", title: "Ship", kind: "structure" },
   { id: "gem", title: "Gem", kind: "pickup" },
+  { id: "sign", title: "Sign", kind: "talk" },
+  { id: "person", title: "Person", kind: "talk" },
 ];
 
 const FEATURES = new Map(FEATURE_LIST.map((feature) => [feature.id, { ...feature }]));
