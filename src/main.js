@@ -40,6 +40,7 @@ const PATH_THICKNESS = 44;
 const MAP_BACKGROUND = "#020617";
 const MAP_GRID_COLOR = "#0f172a";
 const MAP_PLAYER_COLOR = "#f8fafc";
+const HIDE_PROMPTS = false;
 
 const elements = {
   buffer: document.querySelector("[data-buffer]"),
@@ -197,15 +198,22 @@ function renderScene(node, actions) {
   const biome = getBiomeById(node?.biome);
   drawBiomeBase(node, movementEntries, biome, width, height);
   drawBiomePaths(node, movementEntries, width, height, biome);
+  movementEntries.forEach(({ direction }) => {
+    drawAdjacencyHint(node, direction, width, height, biome);
+  });
   drawFeatures(lastFeatureLayout);
 
-  movementEntries.forEach(({ action, direction }) => {
-    drawMovementPrompt(node, action, direction, width, height);
-  });
+  if (!HIDE_PROMPTS) {
+    movementEntries.forEach(({ action, direction }) => {
+      drawMovementPrompt(node, action, direction, width, height);
+    });
+  }
   if (state.status === "success") {
     drawWinScreen(width, height);
   } else {
-    drawActionPrompts(centerEntries, lastFeatureAnchors, width, height);
+    if (!HIDE_PROMPTS) {
+      drawActionPrompts(centerEntries, lastFeatureAnchors, width, height);
+    }
   }
 }
 
@@ -473,7 +481,6 @@ function drawMovementPrompt(node, action, direction, width, height) {
   if (action.isCompleted) {
     sceneCtx.globalAlpha = 0.5;
   }
-  drawAdjacencyHint(node, direction, rect);
   drawPromptCardBackground(rect.x, rect.y, rect.width, rect.height, isHighlighted);
 
   sceneCtx.textBaseline = "middle";
@@ -486,7 +493,6 @@ function drawMovementPrompt(node, action, direction, width, height) {
 
 function drawBiomeBase(node, movementEntries, biome, width, height) {
   if (!biome) {
-    drawSceneFrame(width, height);
     return;
   }
 
@@ -513,23 +519,6 @@ function drawBiomeBase(node, movementEntries, biome, width, height) {
       break;
   }
 
-  drawSceneFrame(width, height);
-}
-
-function drawSceneFrame(width, height) {
-  sceneCtx.save();
-  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
-  sceneCtx.lineWidth = SCENE_FRAME_LINE_WIDTH;
-  drawRoundedRectPath(
-    sceneCtx,
-    SCENE_FRAME_LINE_WIDTH,
-    SCENE_FRAME_LINE_WIDTH,
-    width - SCENE_FRAME_LINE_WIDTH * 2,
-    height - SCENE_FRAME_LINE_WIDTH * 2,
-    24
-  );
-  sceneCtx.stroke();
-  sceneCtx.restore();
 }
 
 function drawDockBiomeDetails(biome, width, height) {
@@ -1103,46 +1092,103 @@ function drawBiomePaths(node, movementEntries, width, height, biome) {
   const pathThickness = Math.min(PATH_THICKNESS, width * 0.08);
   const fillColor = biome?.pathColor || "rgba(15, 23, 42, 0.35)";
   const outlineColor = biome?.pathOutline || "rgba(15, 23, 42, 0.55)";
-  movementEntries.forEach(({ direction }) => {
-    const rect = getPathRect(direction, width, height, centerX, centerY, pathThickness);
-    if (!rect) return;
-    sceneCtx.save();
-    sceneCtx.fillStyle = fillColor;
-    sceneCtx.strokeStyle = outlineColor;
-    sceneCtx.lineWidth = 3;
-    drawRoundedRectPath(sceneCtx, rect.x, rect.y, rect.width, rect.height, 24);
-    sceneCtx.fill();
-    sceneCtx.stroke();
-    sceneCtx.restore();
+  const frameInset = SCENE_FRAME_LINE_WIDTH;
+
+  const outline = buildPathOutline(movementEntries, width, height, centerX, centerY, pathThickness, frameInset);
+  if (!outline.length) return;
+
+  sceneCtx.save();
+  sceneCtx.fillStyle = fillColor;
+  sceneCtx.strokeStyle = outlineColor;
+  sceneCtx.lineWidth = Math.max(3, Math.round(pathThickness * 0.18));
+  sceneCtx.beginPath();
+  outline.forEach((point, index) => {
+    if (index === 0) {
+      sceneCtx.moveTo(point.x, point.y);
+    } else {
+      sceneCtx.lineTo(point.x, point.y);
+    }
   });
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+  sceneCtx.restore();
 }
 
-function getPathRect(direction, width, height, centerX, centerY, thickness) {
-  const margin = 36;
+function getPathRect(direction, width, height, centerX, centerY, thickness, frameInset) {
   switch (direction) {
     case "north": {
-      const y = MOVEMENT_PROMPT_HEIGHT + margin;
+      const y = frameInset;
       const rectHeight = Math.max(18, centerY - y);
       return { x: centerX - thickness / 2, y, width: thickness, height: rectHeight };
     }
     case "south": {
-      const startY = centerY;
-      const rectHeight = Math.max(18, height - startY - MOVEMENT_PROMPT_HEIGHT - margin);
-      return { x: centerX - thickness / 2, y: startY, width: thickness, height: rectHeight };
+      const rectHeight = Math.max(18, height - frameInset - centerY);
+      return { x: centerX - thickness / 2, y: centerY, width: thickness, height: rectHeight };
     }
     case "west": {
-      const x = MOVEMENT_PROMPT_WIDTH + margin;
+      const x = frameInset;
       const rectWidth = Math.max(18, centerX - x);
       return { x, y: centerY - thickness / 2, width: rectWidth, height: thickness };
     }
     case "east": {
-      const startX = centerX;
-      const rectWidth = Math.max(18, width - startX - MOVEMENT_PROMPT_WIDTH - margin);
-      return { x: startX, y: centerY - thickness / 2, width: rectWidth, height: thickness };
+      const rectWidth = Math.max(18, width - frameInset - centerX);
+      return { x: centerX, y: centerY - thickness / 2, width: rectWidth, height: thickness };
     }
     default:
       return null;
   }
+}
+
+function buildPathOutline(movementEntries, width, height, centerX, centerY, thickness, frameInset) {
+  const half = thickness / 2;
+  const hasDirection = (direction) => movementEntries.some((entry) => entry.direction === direction);
+
+  const northExtent = hasDirection("north") ? frameInset : centerY - half;
+  const southExtent = hasDirection("south") ? height - frameInset : centerY + half;
+  const westExtent = hasDirection("west") ? frameInset : centerX - half;
+  const eastExtent = hasDirection("east") ? width - frameInset : centerX + half;
+
+  const innerTopLeft = { x: centerX - half, y: centerY - half };
+  const innerTopRight = { x: centerX + half, y: centerY - half };
+  const innerBottomRight = { x: centerX + half, y: centerY + half };
+  const innerBottomLeft = { x: centerX - half, y: centerY + half };
+
+  const outline = [innerTopLeft];
+
+  if (hasDirection("north")) {
+    outline.push({ x: innerTopLeft.x, y: northExtent });
+    outline.push({ x: innerTopRight.x, y: northExtent });
+    outline.push({ x: innerTopRight.x, y: innerTopRight.y });
+  } else {
+    outline.push(innerTopRight);
+  }
+
+  if (hasDirection("east")) {
+    outline.push({ x: eastExtent, y: innerTopRight.y });
+    outline.push({ x: eastExtent, y: innerBottomRight.y });
+    outline.push({ x: innerBottomRight.x, y: innerBottomRight.y });
+  } else {
+    outline.push(innerBottomRight);
+  }
+
+  if (hasDirection("south")) {
+    outline.push({ x: innerBottomRight.x, y: southExtent });
+    outline.push({ x: innerBottomLeft.x, y: southExtent });
+    outline.push({ x: innerBottomLeft.x, y: innerBottomLeft.y });
+  } else {
+    outline.push(innerBottomLeft);
+  }
+
+  if (hasDirection("west")) {
+    outline.push({ x: westExtent, y: innerBottomLeft.y });
+    outline.push({ x: westExtent, y: innerTopLeft.y });
+    outline.push({ x: innerTopLeft.x, y: innerTopLeft.y });
+  } else {
+    outline.push(innerTopLeft);
+  }
+
+  return outline;
 }
 
 function placeFeatures(features, width, height, node) {
@@ -1322,68 +1368,153 @@ function drawPlaceholderFeature(slot) {
   sceneCtx.restore();
 }
 
-function drawAdjacencyHint(node, direction, rect) {
+function drawAdjacencyHint(node, direction, width, height, biome) {
   if (!node || !node.position || !island) return;
   const neighborId = getNeighborIdForDirection(node, direction);
   if (!neighborId) return;
   const neighbor = island.nodes[neighborId];
   if (!neighbor) return;
   const color = resolveNodeColor(neighbor);
-  const hintRect = getAdjacencyHintRect(direction, rect);
-  if (!hintRect) return;
+  const pathThickness = Math.min(PATH_THICKNESS, width * 0.08);
+  const outlineColor = biome?.pathOutline || "rgba(15, 23, 42, 0.55)";
   sceneCtx.save();
-  sceneCtx.fillStyle = color;
-  sceneCtx.strokeStyle = SCENE_FRAME_COLOR;
-  sceneCtx.lineWidth = 2;
-  drawRoundedRectPath(sceneCtx, hintRect.x, hintRect.y, hintRect.width, hintRect.height, 8);
-  sceneCtx.fill();
-  sceneCtx.stroke();
+  drawAdjacencyArc(direction, color, outlineColor, width, height, pathThickness);
   sceneCtx.restore();
 }
 
-function getAdjacencyHintRect(direction, rect) {
-  const pad = 12;
-  const shortSide = 14;
-  switch (direction) {
-    case "north": {
-      const width = Math.min(rect.width - pad, 70);
-      return {
-        x: rect.x + (rect.width - width) / 2,
-        y: rect.y - shortSide - 10,
-        width,
-        height: shortSide,
-      };
-    }
-    case "south": {
-      const width = Math.min(rect.width - pad, 70);
-      return {
-        x: rect.x + (rect.width - width) / 2,
-        y: rect.y + rect.height + 10,
-        width,
-        height: shortSide,
-      };
-    }
-    case "west": {
-      const height = Math.min(rect.height - pad, 60);
-      return {
-        x: rect.x - shortSide - 10,
-        y: rect.y + (rect.height - height) / 2,
-        width: shortSide,
-        height,
-      };
-    }
-    case "east": {
-      const height = Math.min(rect.height - pad, 60);
-      return {
-        x: rect.x + rect.width + 10,
-        y: rect.y + (rect.height - height) / 2,
-        width: shortSide,
-        height,
-      };
-    }
-    default:
-      return null;
+function drawAdjacencyArc(direction, color, outlineColor, width, height, pathThickness) {
+  const outlineWidth = Math.max(3, Math.round(pathThickness * 0.18));
+  const chordHalf = pathThickness / 2;
+  const inset = SCENE_FRAME_LINE_WIDTH + outlineWidth;
+  const sceneCenterX = width / 2;
+  const sceneCenterY = height / 2;
+  const radius = Math.max(90, pathThickness * 1.8);
+
+  const geometry = getArcGeometry(
+    direction,
+    sceneCenterX,
+    sceneCenterY,
+    width,
+    height,
+    radius,
+    chordHalf,
+    inset
+  );
+  if (!geometry) return;
+
+  const { chordA, chordB, arcCenterX, arcCenterY, startAngle, endAngle, anticlockwise } = geometry;
+
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(chordA.x, chordA.y);
+  sceneCtx.arc(arcCenterX, arcCenterY, radius, startAngle, endAngle, anticlockwise);
+  sceneCtx.lineTo(chordA.x, chordA.y);
+  sceneCtx.closePath();
+
+  sceneCtx.fillStyle = color;
+  sceneCtx.fill();
+  sceneCtx.strokeStyle = outlineColor;
+  sceneCtx.lineWidth = outlineWidth;
+  sceneCtx.beginPath();
+  sceneCtx.arc(arcCenterX, arcCenterY, radius, 0, Math.PI * 2);
+  sceneCtx.stroke();
+}
+
+function getArcGeometry(direction, centerX, centerY, width, height, radius, chordHalf, inset) {
+  const edgeTop = inset;
+  const edgeBottom = height - inset;
+  const edgeLeft = inset;
+  const edgeRight = width - inset;
+
+  let chordA = null;
+  let chordB = null;
+  let arcCenterX = centerX;
+  let arcCenterY = centerY;
+
+  if (direction === "north") {
+    chordA = { x: centerX - chordHalf, y: edgeTop };
+    chordB = { x: centerX + chordHalf, y: edgeTop };
+    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
+    arcCenterX = centerX;
+    arcCenterY = edgeTop - offset;
+  } else if (direction === "south") {
+    chordA = { x: centerX + chordHalf, y: edgeBottom };
+    chordB = { x: centerX - chordHalf, y: edgeBottom };
+    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
+    arcCenterX = centerX;
+    arcCenterY = edgeBottom + offset;
+  } else if (direction === "west") {
+    chordA = { x: edgeLeft, y: centerY + chordHalf };
+    chordB = { x: edgeLeft, y: centerY - chordHalf };
+    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
+    arcCenterX = edgeLeft - offset;
+    arcCenterY = centerY;
+  } else if (direction === "east") {
+    chordA = { x: edgeRight, y: centerY - chordHalf };
+    chordB = { x: edgeRight, y: centerY + chordHalf };
+    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
+    arcCenterX = edgeRight + offset;
+    arcCenterY = centerY;
+  } else {
+    return null;
   }
+
+  const angleA = normalizeAngle(Math.atan2(chordA.y - arcCenterY, chordA.x - arcCenterX));
+  const angleB = normalizeAngle(Math.atan2(chordB.y - arcCenterY, chordB.x - arcCenterX));
+
+  const clockwiseMid = getArcMidpoint(arcCenterX, arcCenterY, radius, angleA, angleB, false);
+  const counterMid = getArcMidpoint(arcCenterX, arcCenterY, radius, angleA, angleB, true);
+
+  const clockwiseInside = isMidpointInside(direction, clockwiseMid, centerX, centerY);
+  const counterInside = isMidpointInside(direction, counterMid, centerX, centerY);
+
+  const anticlockwise = counterInside && !clockwiseInside;
+
+  return {
+    chordA,
+    chordB,
+    arcCenterX,
+    arcCenterY,
+    startAngle: angleA,
+    endAngle: angleB,
+    anticlockwise,
+  };
+}
+
+function getArcMidpoint(cx, cy, radius, startAngle, endAngle, anticlockwise) {
+  const twoPi = Math.PI * 2;
+  let delta = endAngle - startAngle;
+  if (anticlockwise) {
+    if (delta < 0) delta += twoPi;
+  } else {
+    if (delta > 0) delta -= twoPi;
+  }
+  const midAngle = startAngle + delta / 2;
+  return {
+    x: cx + Math.cos(midAngle) * radius,
+    y: cy + Math.sin(midAngle) * radius,
+  };
+}
+
+function isMidpointInside(direction, point, centerX, centerY) {
+  switch (direction) {
+    case "north":
+      return point.y >= centerY;
+    case "south":
+      return point.y <= centerY;
+    case "west":
+      return point.x >= centerX;
+    case "east":
+      return point.x <= centerX;
+    default:
+      return true;
+  }
+}
+
+function normalizeAngle(angle) {
+  const twoPi = Math.PI * 2;
+  let normalized = angle % twoPi;
+  if (normalized < 0) normalized += twoPi;
+  return normalized;
 }
 
 function getNeighborIdForDirection(node, direction) {
