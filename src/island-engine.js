@@ -128,6 +128,16 @@ export function applyAction(island, state, actionId) {
       };
       break;
     }
+    case "say": {
+      const completedFeatures = feature?.id
+        ? addValueToSet(nextState.completedFeatures, feature.id)
+        : nextState.completedFeatures;
+      nextState = {
+        ...nextState,
+        completedFeatures,
+      };
+      break;
+    }
     default:
       break;
   }

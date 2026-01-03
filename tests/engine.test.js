@@ -72,6 +72,25 @@ test("pickup actions cannot be repeated for extra gems", () => {
   assert.equal(harness.getState().gemsCollected, 1);
 });
 
+test("say actions complete features without marking actions complete", () => {
+  const island = createManualIsland();
+  island.nodes.beach.features.push({
+    id: "beach_sign",
+    type: "sign",
+    actionId: "beach_say",
+  });
+  island.nodes.beach.actions.push({
+    id: "beach_say",
+    kind: "say",
+    label: "Say hi",
+  });
+  let state = createInitialState(island);
+  const result = applyAction(island, state, "beach_say");
+  state = result.state;
+  assert.equal(state.completedFeatures.has("beach_sign"), true);
+  assert.equal(state.completedActions.has("beach_say"), false);
+});
+
 test("typing engine matches prompts and clears buffer on activation", () => {
   const actions = [
     { id: "go", label: "Go North", prompt: "cat" },
