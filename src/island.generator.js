@@ -8,8 +8,8 @@ export const DEFAULT_GRID_BOUNDS = Object.freeze({
   maxY: 4,
 });
 
-export const MIN_SURFACE_NODES = 40;
-export const MAX_SURFACE_NODES = 60;
+export const MIN_SURFACE_NODES = 20;
+export const MAX_SURFACE_NODES = 30;
 const MIN_GEMS = 1;
 const SURFACE_BIOMES = listBiomes().filter((biome) => biome.id !== "dock");
 const SAND_BIOME_ID = "sand";

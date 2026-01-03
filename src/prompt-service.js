@@ -1,10 +1,12 @@
 import { createPromptTrainer } from "./prompt-trainer.js";
 
-function rollUniquePrompt(trainer, avoidSet, maxAttempts = 50) {
+const RECENT_PROMPT_LIMIT = 15;
+
+function rollUniquePrompt(trainer, avoidSet, recentSet, maxAttempts = 60) {
   let attempt = 0;
   while (attempt < maxAttempts) {
     const candidate = trainer.nextPrompt();
-    if (!avoidSet.has(candidate)) {
+    if (!avoidSet.has(candidate) && !recentSet.has(candidate)) {
       return candidate;
     }
     attempt += 1;
@@ -17,26 +19,26 @@ export function createPromptService({ trainer = createPromptTrainer() } = {}) {
     throw new Error("createPromptService requires a trainer with nextPrompt()");
   }
 
-  const assignments = new Map();
+  let recentPrompts = [];
+
+  function rememberPrompt(prompt) {
+    if (!prompt) return;
+    recentPrompts = [...recentPrompts, prompt].slice(-RECENT_PROMPT_LIMIT);
+  }
 
   return {
-    getPrompt(actionId, avoidSet = new Set()) {
-      const existing = assignments.get(actionId);
-      if (existing && !avoidSet.has(existing)) {
-        return existing;
-      }
-      const prompt = rollUniquePrompt(trainer, avoidSet);
-      assignments.set(actionId, prompt);
+    getPrompt(_actionId, avoidSet = new Set()) {
+      const recentSet = new Set(recentPrompts);
+      const prompt = rollUniquePrompt(trainer, avoidSet, recentSet);
+      rememberPrompt(prompt);
       return prompt;
     },
-    refresh(actionId) {
-      assignments.delete(actionId);
-    },
+    refresh() {},
     reset() {
-      assignments.clear();
+      recentPrompts = [];
     },
-    peek(actionId) {
-      return assignments.get(actionId) || null;
+    peek() {
+      return null;
     },
   };
 }

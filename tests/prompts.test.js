@@ -45,20 +45,20 @@ test("prompt service avoids duplicate prompts per view", () => {
   assert.equal(second, "dog");
 });
 
-test("prompt service refresh and reset reassign prompts", () => {
+test("prompt service does not cache prompts between calls", () => {
   const trainer = createStubTrainer(["one", "two", "three"]);
   const service = createPromptService({ trainer });
 
-  const initial = service.getPrompt("action");
-  assert.equal(initial, "one");
+  const first = service.getPrompt("action");
+  const second = service.getPrompt("action");
+  const third = service.getPrompt("action");
+
+  assert.equal(first, "one");
+  assert.equal(second, "two");
+  assert.equal(third, "three");
 
   service.refresh("action");
-  const afterRefresh = service.getPrompt("action");
-  assert.equal(afterRefresh, "two");
-
   service.reset();
-  const afterReset = service.getPrompt("action");
-  assert.equal(afterReset, "three");
 });
 
 test("typing engine activates the action whose prompt was assigned", () => {
