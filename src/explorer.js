@@ -40,7 +40,7 @@ export function drawExplorer(ctx, x, y, scale = 1, opts = {}) {
     shoePink: opts.shoePink ?? "#ff6fb1",
   };
 
-  const lw = 4 * scale;
+  const lw = 3 * scale;
 
   ctx.save();
   ctx.translate(x, y);

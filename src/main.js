@@ -198,6 +198,7 @@ function renderScene(node, actions) {
   const biome = getBiomeById(node?.biome);
   drawBiomeBase(node, movementEntries, biome, width, height);
   drawBiomePaths(node, movementEntries, width, height, biome);
+  drawExplorerInScene(width, height);
   movementEntries.forEach(({ direction }) => {
     drawAdjacencyHint(node, direction, width, height, biome);
   });
@@ -215,6 +216,14 @@ function renderScene(node, actions) {
       drawActionPrompts(centerEntries, lastFeatureAnchors, width, height);
     }
   }
+}
+
+function drawExplorerInScene(width, height) {
+  if (state?.status !== "playing") return;
+  const scale = clamp(Math.min(width, height) / 520, 0.7, 1.05);
+  const x = width / 2;
+  const y = height / 2;
+  drawExplorer(sceneCtx, x, y, scale);
 }
 
 function renderMap() {
@@ -1321,9 +1330,15 @@ function drawSignFeature(slot) {
 function drawPersonFeature(slot) {
   sceneCtx.save();
   const headRadius = 16;
-  sceneCtx.fillStyle = "#fbd2b6";
+  sceneCtx.fillStyle = "#b7795f";
   sceneCtx.beginPath();
   sceneCtx.arc(slot.x, slot.y - 26, headRadius, 0, Math.PI * 2);
+  sceneCtx.fill();
+
+  sceneCtx.fillStyle = "#3f2a1d";
+  sceneCtx.beginPath();
+  sceneCtx.arc(slot.x, slot.y - 32, headRadius * 1.05, Math.PI, Math.PI * 2);
+  sceneCtx.closePath();
   sceneCtx.fill();
 
   sceneCtx.fillStyle = "#38bdf8";

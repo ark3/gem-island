@@ -68,7 +68,7 @@ export function generateIsland(options = {}) {
   assignBiomesToSurfaceNodes(nodes, shipNode, nodesByCoordinate, random, biomeCounters);
 
   addShipActions(shipNode);
-  addBeachPerson(nodes, shipNode);
+  addBeachPerson(nodes, shipNode, nodesByCoordinate, bounds);
 
   const gemHosts = selectGemHosts(nodes, shipNode, adjacency, random);
   gemHosts.forEach((node, index) => addGemToNode(node, index));
@@ -482,8 +482,13 @@ function addShipActions(node) {
   });
 }
 
-function addBeachPerson(nodes, shipNode) {
-  const candidates = nodes.filter((node) => node.id !== shipNode.id && node.biome === SAND_BIOME_ID);
+function addBeachPerson(nodes, shipNode, nodesByCoordinate, bounds) {
+  const candidates = nodes.filter(
+    (node) =>
+      node.id !== shipNode.id &&
+      node.biome === SAND_BIOME_ID &&
+      hasWaterNeighbor(node, nodesByCoordinate, bounds)
+  );
   if (!candidates.length) return;
   const target = findNearestNode(candidates, shipNode.position);
   if (!target) return;
@@ -532,4 +537,16 @@ function findNearestNode(nodes, position) {
     }
     return nearest;
   }, null)?.node;
+}
+
+function hasWaterNeighbor(node, nodesByCoordinate, bounds) {
+  if (!node?.position) return false;
+  return CARDINAL_DIRECTIONS.some((direction) => {
+    const x = node.position.x + direction.dx;
+    const y = node.position.y + direction.dy;
+    if (!isWithinBounds(x, y, bounds)) {
+      return true;
+    }
+    return !nodesByCoordinate.has(coordinateKey(x, y));
+  });
 }
