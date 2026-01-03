@@ -191,7 +191,7 @@ function renderScene(node, actions) {
         })
         .filter((feature) => feature && shouldRenderFeature(feature))
     : [];
-  lastFeatureLayout = placeFeatures(normalizedFeatures, width, height);
+  lastFeatureLayout = placeFeatures(normalizedFeatures, width, height, node);
   lastFeatureAnchors = buildFeatureAnchors(lastFeatureLayout, width, height);
 
   const biome = getBiomeById(node?.biome);
@@ -1145,9 +1145,14 @@ function getPathRect(direction, width, height, centerX, centerY, thickness) {
   }
 }
 
-function placeFeatures(features, width, height) {
+function placeFeatures(features, width, height, node) {
   const layout = [];
   const slots = getFeatureSlots(width, height);
+  const centerSlot = slots[slots.length - 1];
+  const cornerSlots = slots.slice(0, -1);
+  const seededRandom = node?.id ? createSeededRandom(hashString(node.id)) : null;
+  const shuffledCorners = seededRandom ? shuffleSlots(cornerSlots, seededRandom) : cornerSlots;
+  const slotQueue = centerSlot ? [...shuffledCorners, centerSlot] : shuffledCorners;
   features.forEach((feature) => {
     if (!shouldRenderFeature(feature)) {
       return;
@@ -1160,7 +1165,7 @@ function placeFeatures(features, width, height) {
         y: Math.min(height - 80, height * 0.6),
       };
     } else {
-      slot = slots.shift();
+      slot = slotQueue.shift();
     }
     if (!slot) return;
     layout.push({ ...feature, slot });
@@ -1170,15 +1175,33 @@ function placeFeatures(features, width, height) {
 
 function getFeatureSlots(width, height) {
   const center = { x: width / 2, y: height / 2 };
-  const offset = 120;
-  const slots = [
-    { id: "north", x: center.x, y: center.y - offset },
-    { id: "east", x: center.x + offset, y: center.y },
-    { id: "west", x: center.x - offset, y: center.y },
-    { id: "south", x: center.x, y: center.y + offset },
+  const insetX = Math.min(220, width * 0.3);
+  const insetY = Math.min(190, height * 0.27);
+  const corners = [
+    { id: "southwest", x: center.x - insetX, y: center.y + insetY },
+    { id: "northeast", x: center.x + insetX, y: center.y - insetY },
+    { id: "northwest", x: center.x - insetX, y: center.y - insetY },
+    { id: "southeast", x: center.x + insetX, y: center.y + insetY },
   ];
-  slots.push({ id: "center", x: center.x, y: center.y });
-  return slots;
+  corners.push({ id: "center-low", x: center.x, y: center.y + insetY * 0.65 });
+  return corners;
+}
+
+function shuffleSlots(slots, random) {
+  const result = slots.slice();
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const swapIndex = Math.floor(random() * (i + 1));
+    [result[i], result[swapIndex]] = [result[swapIndex], result[i]];
+  }
+  return result;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) % 2147483647;
+  }
+  return hash;
 }
 
 function drawFeatures(features) {
