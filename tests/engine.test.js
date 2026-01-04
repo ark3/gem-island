@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 
 import { createManualIsland } from "../src/island.manual.js";
 import { generateIsland } from "../src/island.generator.js";
-import { applyAction, countCompletedNodes, createInitialState, isNodeCompleted } from "../src/island-engine.js";
+import {
+  applyAction,
+  countCompletedNodes,
+  createInitialState,
+  getVisibleActions,
+  isNodeCompleted,
+} from "../src/island-engine.js";
 import { TypingEngine } from "../src/typing-engine.js";
 import { createSeededRandom } from "./helpers/random.js";
 
@@ -89,6 +95,31 @@ test("say actions complete features without marking actions complete", () => {
   state = result.state;
   assert.equal(state.completedFeatures.has("beach_sign"), true);
   assert.equal(state.completedActions.has("beach_say"), false);
+});
+
+test("completed removable actions are hidden but non-removable actions remain visible", () => {
+  const island = createManualIsland();
+  island.nodes.beach.actions.push({
+    id: "beach_sign",
+    kind: "say",
+    label: "Read sign",
+    removable: false,
+  });
+  island.nodes.beach.actions.push({
+    id: "beach_pick_shell",
+    kind: "pickup",
+    label: "Pick Up Shell",
+    item: "shell",
+    amount: 1,
+  });
+  const state = createInitialState(island);
+  state.completedActions.add("beach_sign");
+  state.completedActions.add("beach_pick_shell");
+
+  const visible = getVisibleActions(island, state, island.nodes.beach);
+  const visibleIds = visible.map((action) => action.id);
+  assert.equal(visibleIds.includes("beach_sign"), true);
+  assert.equal(visibleIds.includes("beach_pick_shell"), false);
 });
 
 test("typing engine matches prompts and clears buffer on activation", () => {

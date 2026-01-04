@@ -49,10 +49,22 @@ export function getItemCount(state, item) {
 
 export function getVisibleActions(island, state, node) {
   if (!node) return [];
-  return node.actions.map((action) => ({
-    ...action,
-    isCompleted: action.kind !== "move" ? state.completedActions.has(action.id) : false,
-  }));
+  const visible = [];
+  node.actions.forEach((action) => {
+    const isCompleted = action.kind !== "move" ? state.completedActions.has(action.id) : false;
+    const removable =
+      typeof action.removable === "boolean"
+        ? action.removable
+        : action.kind === "pickup";
+    if (isCompleted && removable) {
+      return;
+    }
+    visible.push({
+      ...action,
+      isCompleted,
+    });
+  });
+  return visible;
 }
 
 function addValueToSet(set, value) {

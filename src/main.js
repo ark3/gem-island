@@ -370,9 +370,8 @@ function drawMapLandmark(landmark, x, y, size) {
 
 function shouldRenderFeature(feature) {
   if (!feature) return false;
-  if (feature.type === "gem") {
-    return !feature.isComplete;
-  }
+  const removable = typeof feature.removable === "boolean" ? feature.removable : feature.type === "gem";
+  if (feature.isComplete && removable) return false;
   return true;
 }
 
