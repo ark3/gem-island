@@ -28,7 +28,9 @@ function formatCount(count, singular, plural = `${singular}s`) {
 export function createInitialState(_island) {
   return {
     currentNodeId: "ship",
-    gemsCollected: 0,
+    inventory: {
+      gem: 0,
+    },
     completedActions: new Set(),
     completedFeatures: new Set(),
     visitedNodes: new Set(["ship"]),
@@ -38,6 +40,11 @@ export function createInitialState(_island) {
 
 export function getCurrentNode(island, state) {
   return island.nodes[state.currentNodeId];
+}
+
+export function getItemCount(state, item) {
+  if (!state || !item) return 0;
+  return state.inventory?.[item] ?? 0;
 }
 
 export function getVisibleActions(island, state, node) {
@@ -89,6 +96,11 @@ export function applyAction(island, state, actionId) {
       }
       const completed = addValueToSet(nextState.completedActions, action.id);
       const amount = typeof action.amount === "number" ? action.amount : 0;
+      const item = typeof action.item === "string" ? action.item : null;
+      const inventory = { ...nextState.inventory };
+      if (item && amount) {
+        inventory[item] = (inventory[item] ?? 0) + amount;
+      }
       const completedFeatures = feature?.id
         ? addValueToSet(nextState.completedFeatures, feature.id)
         : nextState.completedFeatures;
@@ -96,22 +108,28 @@ export function applyAction(island, state, actionId) {
         ...nextState,
         completedActions: completed,
         completedFeatures,
-        gemsCollected: nextState.gemsCollected + amount,
+        inventory,
       };
-      events.push({
-        type: "toast",
-        message: `You picked up a gem! Now you have ${formatCount(nextState.gemsCollected, "gem")}.`,
-      });
+      if (item === "gem") {
+        const gemCount = getItemCount(nextState, "gem");
+        events.push({
+          type: "toast",
+          message: `You picked up a gem! Now you have ${formatCount(gemCount, "gem")}.`,
+        });
+      } else if (item) {
+        events.push({
+          type: "toast",
+          message: `You picked up ${formatCount(amount, item)}.`,
+        });
+      }
       break;
     }
     case "ship": {
-      if (island.requiredGems > nextState.gemsCollected) {
+      const gemCount = getItemCount(nextState, "gem");
+      if (island.requiredGems > gemCount) {
         events.push({
           type: "toast",
-          message: `You need ${formatCount(island.requiredGems, "gem")} to finish. You have ${formatCount(
-            nextState.gemsCollected,
-            "gem"
-          )} right now.`,
+          message: `You need ${formatCount(island.requiredGems, "gem")} to finish. You have ${formatCount(gemCount, "gem")} right now.`,
         });
         return { state, events };
       }

@@ -5,6 +5,7 @@ import {
   countCompletedNodes,
   createInitialState,
   getCurrentNode,
+  getItemCount,
   getVisibleActions,
   isNodeCompleted,
 } from "./island-engine.js";
@@ -84,7 +85,7 @@ function renderProgress() {
   const visited = state.visitedNodes.size;
   const completed = countCompletedNodes(island, state);
   elements.progress.innerHTML = `
-    <div>Gems: ${state.gemsCollected} / ${island.requiredGems}</div>
+    <div>Gems: ${getItemCount(state, "gem")} / ${island.requiredGems}</div>
     <div>Visited nodes: ${visited}</div>
     <div>Completed nodes: ${completed}</div>
   `;
@@ -316,7 +317,7 @@ function drawPlayerIcon(x, y, size) {
 }
 
 function drawMapProgress(width, height) {
-  const text = `Gems ${state.gemsCollected} / ${island.requiredGems}`;
+  const text = `Gems ${getItemCount(state, "gem")} / ${island.requiredGems}`;
   mapCtx.save();
   mapCtx.fillStyle = LABEL_COLOR;
   mapCtx.font = "600 14px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace";

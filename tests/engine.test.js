@@ -69,7 +69,7 @@ test("pickup actions cannot be repeated for extra gems", () => {
 
   const repeat = harness.playAction("beach_pick_gem");
   assert.equal(repeat.events.length, 0);
-  assert.equal(harness.getState().gemsCollected, 1);
+  assert.equal(harness.getState().inventory.gem, 1);
 });
 
 test("say actions complete features without marking actions complete", () => {
@@ -298,7 +298,7 @@ test("generated islands can be completed via movement and pickups", () => {
     const finish = play("ship_leave");
     assert.equal(finish.events.at(-1)?.message, "Success!");
     assert.equal(state.status, "success");
-    assert.equal(state.gemsCollected, island.requiredGems);
+    assert.equal(state.inventory.gem, island.requiredGems);
 
     const completed = countCompletedNodes(island, state);
     assert.ok(
