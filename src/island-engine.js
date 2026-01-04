@@ -47,6 +47,41 @@ export function getItemCount(state, item) {
   return state.inventory?.[item] ?? 0;
 }
 
+export function isNodeVisited(state, nodeId) {
+  if (!state || !nodeId) return false;
+  return state.visitedNodes?.has(nodeId) ?? false;
+}
+
+export function hasItem(state, item, amount = 1) {
+  if (!state || !item) return false;
+  return getItemCount(state, item) >= amount;
+}
+
+export function evaluateCondition(island, state, condition) {
+  if (!condition) return true;
+  if (Array.isArray(condition)) {
+    return condition.every((entry) => evaluateCondition(island, state, entry));
+  }
+  if (condition.all) {
+    return condition.all.every((entry) => evaluateCondition(island, state, entry));
+  }
+  if (condition.any) {
+    return condition.any.some((entry) => evaluateCondition(island, state, entry));
+  }
+  if (condition.not) {
+    return !evaluateCondition(island, state, condition.not);
+  }
+
+  switch (condition.type) {
+    case "visited":
+      return isNodeVisited(state, condition.nodeId);
+    case "hasItem":
+      return hasItem(state, condition.item, condition.amount ?? 1);
+    default:
+      return false;
+  }
+}
+
 export function getVisibleActions(island, state, node) {
   if (!node) return [];
   const visible = [];

@@ -7,7 +7,10 @@ import {
   applyAction,
   countCompletedNodes,
   createInitialState,
+  evaluateCondition,
   getVisibleActions,
+  hasItem,
+  isNodeVisited,
   isNodeCompleted,
 } from "../src/island-engine.js";
 import { TypingEngine } from "../src/typing-engine.js";
@@ -120,6 +123,61 @@ test("completed removable actions are hidden but non-removable actions remain vi
   const visibleIds = visible.map((action) => action.id);
   assert.equal(visibleIds.includes("beach_sign"), true);
   assert.equal(visibleIds.includes("beach_pick_shell"), false);
+});
+
+test("condition helpers check inventory and visited nodes", () => {
+  const island = createManualIsland();
+  let state = createInitialState(island);
+
+  assert.equal(isNodeVisited(state, "ship"), true);
+  assert.equal(isNodeVisited(state, "beach"), false);
+  assert.equal(hasItem(state, "gem", 1), false);
+
+  state = applyAction(island, state, "ship_move_north_beach").state;
+  state = applyAction(island, state, "beach_pick_gem").state;
+
+  assert.equal(isNodeVisited(state, "beach"), true);
+  assert.equal(hasItem(state, "gem", 1), true);
+  assert.equal(hasItem(state, "gem", 2), false);
+});
+
+test("evaluateCondition supports visited, inventory, and boolean combinators", () => {
+  const island = createManualIsland();
+  let state = createInitialState(island);
+
+  assert.equal(evaluateCondition(island, state, null), true);
+  assert.equal(evaluateCondition(island, state, { type: "visited", nodeId: "ship" }), true);
+  assert.equal(evaluateCondition(island, state, { type: "visited", nodeId: "beach" }), false);
+
+  state = applyAction(island, state, "ship_move_north_beach").state;
+  state = applyAction(island, state, "beach_pick_gem").state;
+
+  assert.equal(evaluateCondition(island, state, { type: "hasItem", item: "gem", amount: 1 }), true);
+  assert.equal(evaluateCondition(island, state, { type: "hasItem", item: "gem", amount: 2 }), false);
+  assert.equal(
+    evaluateCondition(island, state, {
+      all: [
+        { type: "visited", nodeId: "beach" },
+        { type: "hasItem", item: "gem", amount: 1 },
+      ],
+    }),
+    true
+  );
+  assert.equal(
+    evaluateCondition(island, state, {
+      any: [
+        { type: "visited", nodeId: "cave" },
+        { type: "hasItem", item: "gem", amount: 1 },
+      ],
+    }),
+    true
+  );
+  assert.equal(
+    evaluateCondition(island, state, {
+      not: { type: "hasItem", item: "gem", amount: 2 },
+    }),
+    true
+  );
 });
 
 test("typing engine matches prompts and clears buffer on activation", () => {
