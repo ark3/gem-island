@@ -14,13 +14,13 @@
   - Currently only gems are removed, so talk appears to work by accident; make the rule explicit.
   - Define a general rule or flag for which actions/features are removable vs repeatable.
   - Drive visibility from that rule instead of completion status.
-- Implement Quest Giver state machine (Incomplete -> Complete).
+- Implement quest givers via feature completion state (no standalone quest objects).
   - Keep quest givers visible and interactive after completion.
-  - *Context:* Logic must handle "Condition Met" (consume items, mark complete, spawn reward) vs "Already Complete" (flavor text).
-- Implement conditional logic (check visited nodes, check inventory).
-- Implement quest metadata on talk actions (type, target, dialog lines).
+  - *Context:* Logic must handle "Condition Met" (consume items, mark feature complete, spawn reward) vs "Already Complete" (flavor text).
+- Implement conditional logic (check visited nodes, check inventory, check completed features).
+- Implement quest metadata on talk actions (type, target, dialog lines, optional consume).
 - Implement reward spawning (completing a quest reveals a gem).
-  - Keep island immutable: define reward gem features/actions up front and gate their visibility with quest-complete conditions (derived state).
+  - Keep island immutable: define reward gem features/actions up front and gate their visibility with feature-complete conditions (derived state).
   - *Context:* Add `req` or `condition` fields to Actions; update `getVisibleActions` to filter.
 - Update generator to place NPCs/Signs and attach quest metadata to talk actions.
 

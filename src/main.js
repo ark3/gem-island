@@ -1668,11 +1668,6 @@ function handleAction(action) {
     case "pickup":
       clearActivation();
       break;
-    case "say": {
-      const message = action.message || action.label || "Hello!";
-      showActivation(message, "success");
-      break;
-    }
     default: {
       showActivation(`Activated: ${action.label}`, "success");
     }
@@ -1686,6 +1681,9 @@ function handleAction(action) {
     if (event.type === "toast") {
       const variant = event.message === "Success!" ? "success" : "error";
       showToast(event.message, variant);
+    }
+    if (event.type === "message") {
+      showActivation(event.message, event.variant);
     }
   });
 

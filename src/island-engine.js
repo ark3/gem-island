@@ -77,6 +77,8 @@ export function evaluateCondition(island, state, condition) {
       return isNodeVisited(state, condition.nodeId);
     case "hasItem":
       return hasItem(state, condition.item, condition.amount ?? 1);
+    case "featureComplete":
+      return state?.completedFeatures?.has(condition.featureId) ?? false;
     default:
       return false;
   }
@@ -111,6 +113,17 @@ function addValueToSet(set, value) {
   const next = new Set(set);
   next.add(value);
   return next;
+}
+
+function consumeItem(inventory, item, amount) {
+  if (!inventory || !item || !amount) return inventory;
+  const current = inventory[item] ?? 0;
+  const nextAmount = Math.max(0, current - amount);
+  if (nextAmount === current) return inventory;
+  return {
+    ...inventory,
+    [item]: nextAmount,
+  };
 }
 
 export function applyAction(island, state, actionId) {
@@ -197,13 +210,39 @@ export function applyAction(island, state, actionId) {
       break;
     }
     case "say": {
-      const completedFeatures = feature?.id
-        ? addValueToSet(nextState.completedFeatures, feature.id)
-        : nextState.completedFeatures;
-      nextState = {
-        ...nextState,
-        completedFeatures,
-      };
+      const dialog = action.dialog || null;
+      const featureId = feature?.id;
+      const isComplete = featureId ? nextState.completedFeatures.has(featureId) : false;
+      const hasCondition = Boolean(action.condition);
+      const conditionMet = hasCondition ? evaluateCondition(island, nextState, action.condition) : true;
+      const baseMessage = action.message || action.label || "Hello!";
+      let message = baseMessage;
+
+      if (isComplete) {
+        message = dialog?.complete || baseMessage;
+      } else if (conditionMet) {
+        message = dialog?.success || baseMessage;
+        if (featureId) {
+          nextState = {
+            ...nextState,
+            completedFeatures: addValueToSet(nextState.completedFeatures, featureId),
+          };
+        }
+        if (action.consume?.item && action.consume?.amount) {
+          nextState = {
+            ...nextState,
+            inventory: consumeItem(nextState.inventory, action.consume.item, action.consume.amount),
+          };
+        }
+      } else {
+        message = dialog?.incomplete || baseMessage;
+      }
+
+      events.push({
+        type: "message",
+        message,
+        variant: conditionMet || isComplete ? "success" : "neutral",
+      });
       break;
     }
     default:

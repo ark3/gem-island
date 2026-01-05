@@ -178,6 +178,13 @@ test("evaluateCondition supports visited, inventory, and boolean combinators", (
     }),
     true
   );
+  assert.equal(
+    evaluateCondition(island, state, {
+      type: "featureComplete",
+      featureId: "beach_gem_feature",
+    }),
+    true
+  );
 });
 
 test("getVisibleActions hides actions until their condition is met", () => {
@@ -200,6 +207,43 @@ test("getVisibleActions hides actions until their condition is met", () => {
 
   visible = getVisibleActions(island, state, island.nodes.beach);
   assert.equal(visible.some((action) => action.id === "beach_bonus"), true);
+});
+
+test("say actions complete quest-giver features when conditions are met", () => {
+  const island = createManualIsland();
+  island.nodes.beach.features.push({
+    id: "beach_farmer",
+    type: "person",
+    actionId: "beach_talk_farmer",
+  });
+  island.nodes.beach.actions.push({
+    id: "beach_talk_farmer",
+    kind: "say",
+    label: "Talk",
+    condition: { type: "visited", nodeId: "cave" },
+    dialog: {
+      incomplete: "Have you seen the cave?",
+      success: "Thanks for finding the cave!",
+      complete: "Thanks again!",
+    },
+  });
+
+  let state = createInitialState(island);
+  let result = applyAction(island, state, "beach_talk_farmer");
+  state = result.state;
+  assert.equal(state.completedFeatures.has("beach_farmer"), false);
+  assert.equal(result.events.at(-1)?.message, "Have you seen the cave?");
+
+  state = applyAction(island, state, "ship_move_north_beach").state;
+  state = applyAction(island, state, "beach_move_east_cave").state;
+  state = applyAction(island, state, "cave_move_west_beach").state;
+  result = applyAction(island, state, "beach_talk_farmer");
+  state = result.state;
+  assert.equal(state.completedFeatures.has("beach_farmer"), true);
+  assert.equal(result.events.at(-1)?.message, "Thanks for finding the cave!");
+
+  result = applyAction(island, state, "beach_talk_farmer");
+  assert.equal(result.events.at(-1)?.message, "Thanks again!");
 });
 
 test("typing engine matches prompts and clears buffer on activation", () => {
