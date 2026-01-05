@@ -180,6 +180,28 @@ test("evaluateCondition supports visited, inventory, and boolean combinators", (
   );
 });
 
+test("getVisibleActions hides actions until their condition is met", () => {
+  const island = createManualIsland();
+  island.nodes.beach.actions.push({
+    id: "beach_bonus",
+    kind: "pickup",
+    label: "Pick Up Bonus",
+    item: "gem",
+    amount: 1,
+    condition: { type: "visited", nodeId: "cave" },
+  });
+  let state = createInitialState(island);
+  let visible = getVisibleActions(island, state, island.nodes.beach);
+  assert.equal(visible.some((action) => action.id === "beach_bonus"), false);
+
+  state = applyAction(island, state, "ship_move_north_beach").state;
+  state = applyAction(island, state, "beach_move_east_cave").state;
+  state = applyAction(island, state, "cave_move_west_beach").state;
+
+  visible = getVisibleActions(island, state, island.nodes.beach);
+  assert.equal(visible.some((action) => action.id === "beach_bonus"), true);
+});
+
 test("typing engine matches prompts and clears buffer on activation", () => {
   const actions = [
     { id: "go", label: "Go North", prompt: "cat" },
