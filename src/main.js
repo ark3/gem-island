@@ -8,6 +8,7 @@ import {
   getCurrentNode,
   getItemCount,
   getVisibleActions,
+  isFeatureVisible,
   isNodeCompleted,
 } from "./island-engine.js";
 import { createPromptService } from "./prompt-service.js";
@@ -370,13 +371,7 @@ function drawMapLandmark(landmark, x, y, size) {
 }
 
 function shouldRenderFeature(feature) {
-  if (!feature) return false;
-  if (feature.condition && !evaluateCondition(island, state, feature.condition)) {
-    return false;
-  }
-  const removable = typeof feature.removable === "boolean" ? feature.removable : feature.type === "gem";
-  if (feature.isComplete && removable) return false;
-  return true;
+  return isFeatureVisible(feature, state, island);
 }
 
 function updateBufferDisplay(text, match) {

@@ -84,6 +84,18 @@ export function evaluateCondition(island, state, condition) {
   }
 }
 
+export function isFeatureVisible(feature, state, island) {
+  if (!feature) return false;
+  if (feature.condition && !evaluateCondition(island, state, feature.condition)) {
+    return false;
+  }
+  const removable = typeof feature.removable === "boolean" ? feature.removable : feature.type === "gem";
+  if (feature.id && state?.completedFeatures?.has(feature.id) && removable) {
+    return false;
+  }
+  return true;
+}
+
 export function getVisibleActions(island, state, node) {
   if (!node) return [];
   const visible = [];

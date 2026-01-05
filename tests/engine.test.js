@@ -10,6 +10,7 @@ import {
   evaluateCondition,
   getVisibleActions,
   hasItem,
+  isFeatureVisible,
   isNodeVisited,
   isNodeCompleted,
 } from "../src/island-engine.js";
@@ -244,6 +245,127 @@ test("say actions complete quest-giver features when conditions are met", () => 
 
   result = applyAction(island, state, "beach_talk_farmer");
   assert.equal(result.events.at(-1)?.message, "Thanks again!");
+});
+
+test("say actions branch dialog and consume items when conditions are met", () => {
+  const island = createManualIsland();
+  island.nodes.beach.features.push({
+    id: "beach_fisher",
+    type: "person",
+    actionId: "beach_talk_fisher",
+  });
+  island.nodes.beach.actions.push({
+    id: "beach_talk_fisher",
+    kind: "say",
+    label: "Talk",
+    condition: { type: "hasItem", item: "shell", amount: 2 },
+    consume: { item: "shell", amount: 2 },
+    dialog: {
+      incomplete: "Could you bring me two shells?",
+      success: "Wonderful shells, thanks!",
+      complete: "Thanks for the shells.",
+    },
+  });
+
+  let state = createInitialState(island);
+  state = {
+    ...state,
+    inventory: {
+      ...state.inventory,
+      shell: 1,
+    },
+  };
+
+  let result = applyAction(island, state, "beach_talk_fisher");
+  state = result.state;
+  assert.equal(result.events.at(-1)?.message, "Could you bring me two shells?");
+  assert.equal(result.events.at(-1)?.variant, "neutral");
+  assert.equal(state.completedFeatures.has("beach_fisher"), false);
+  assert.equal(state.inventory.shell, 1);
+
+  state = {
+    ...state,
+    inventory: {
+      ...state.inventory,
+      shell: 2,
+    },
+  };
+  result = applyAction(island, state, "beach_talk_fisher");
+  state = result.state;
+  assert.equal(result.events.at(-1)?.message, "Wonderful shells, thanks!");
+  assert.equal(result.events.at(-1)?.variant, "success");
+  assert.equal(state.completedFeatures.has("beach_fisher"), true);
+  assert.equal(state.inventory.shell, 0);
+
+  result = applyAction(island, state, "beach_talk_fisher");
+  assert.equal(result.events.at(-1)?.message, "Thanks for the shells.");
+  assert.equal(result.events.at(-1)?.variant, "success");
+});
+
+test("feature visibility respects featureComplete conditions", () => {
+  const island = createManualIsland();
+  const feature = {
+    id: "reward_gem",
+    type: "gem",
+    condition: { type: "featureComplete", featureId: "beach_farmer" },
+  };
+  let state = createInitialState(island);
+  assert.equal(isFeatureVisible(feature, state, island), false);
+
+  state = {
+    ...state,
+    completedFeatures: new Set(["beach_farmer"]),
+  };
+  assert.equal(isFeatureVisible(feature, state, island), true);
+});
+
+test("reward gems gated by quest completion remain hidden until the quest completes", () => {
+  const island = createManualIsland();
+  island.nodes.beach.features.push({
+    id: "beach_quest_giver",
+    type: "person",
+    actionId: "beach_talk_quest",
+  });
+  island.nodes.beach.actions.push({
+    id: "beach_talk_quest",
+    kind: "say",
+    label: "Talk",
+    condition: { type: "visited", nodeId: "cave" },
+    dialog: {
+      incomplete: "Have you been to the cave?",
+      success: "Thanks for visiting the cave!",
+      complete: "Thanks again!",
+    },
+  });
+  island.nodes.beach.features.push({
+    id: "beach_reward_gem",
+    type: "gem",
+    actionId: "beach_reward_pickup",
+    condition: { type: "featureComplete", featureId: "beach_quest_giver" },
+  });
+  island.nodes.beach.actions.push({
+    id: "beach_reward_pickup",
+    kind: "pickup",
+    label: "Pick Up Gem",
+    item: "gem",
+    amount: 1,
+    condition: { type: "featureComplete", featureId: "beach_quest_giver" },
+  });
+
+  let state = createInitialState(island);
+  let actions = getVisibleActions(island, state, island.nodes.beach);
+  assert.equal(actions.some((action) => action.id === "beach_reward_pickup"), false);
+
+  state = applyAction(island, state, "ship_move_north_beach").state;
+  state = applyAction(island, state, "beach_move_east_cave").state;
+  state = applyAction(island, state, "cave_move_west_beach").state;
+  state = applyAction(island, state, "beach_talk_quest").state;
+
+  actions = getVisibleActions(island, state, island.nodes.beach);
+  assert.equal(actions.some((action) => action.id === "beach_reward_pickup"), true);
+
+  const pickup = applyAction(island, state, "beach_reward_pickup");
+  assert.equal(pickup.state.inventory.gem, 1);
 });
 
 test("typing engine matches prompts and clears buffer on activation", () => {
