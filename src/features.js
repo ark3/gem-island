@@ -7,6 +7,7 @@ const FALLBACK_FEATURE = Object.freeze({
 const FEATURE_LIST = [
   { id: "ship", title: "Ship", kind: "structure" },
   { id: "gem", title: "Gem", kind: "pickup" },
+  { id: "shell", title: "Shell", kind: "pickup" },
   { id: "sign", title: "Sign", kind: "talk" },
   { id: "person", title: "Person", kind: "talk" },
 ];

@@ -564,9 +564,15 @@ test("generated islands can be completed via movement and pickups", () => {
     gemPickups.forEach((entry) => {
       const path = findMovementPath(graph, state.currentNodeId, entry.nodeId);
       path.forEach((moveAction) => play(moveAction));
-      const pickup = play(entry.actionId);
-      const message = pickup.events.at(-1)?.message || "";
-      assert.ok(message.includes("picked up a gem"), "pickup should emit gem toast");
+      const node = island.nodes[entry.nodeId];
+      const pickupActions = node.actions.filter((action) => action.kind === "pickup");
+      pickupActions.forEach((action) => {
+        const pickup = play(action.id);
+        if (action.item === "gem") {
+          const message = pickup.events.at(-1)?.message || "";
+          assert.ok(message.includes("picked up a gem"), "pickup should emit gem toast");
+        }
+      });
     });
 
     const returnPath = findMovementPath(graph, state.currentNodeId, "ship");

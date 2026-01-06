@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULT_GRID_BOUNDS, MAX_SURFACE_NODES, MIN_SURFACE_NODES, generateIsland } from "../src/island.generator.js";
-import { CARDINAL_DIRECTIONS } from "../src/island-utils.js";
+import { CARDINAL_DIRECTIONS, coordinateKey } from "../src/island-utils.js";
 import { createCycleRandom, createSeededRandom } from "./helpers/random.js";
 
 function getMovementActions(node) {
@@ -17,6 +17,31 @@ function getGemActions(island) {
       .forEach((action) => actions.push({ node, action }));
   });
   return actions;
+}
+
+function buildNodesByCoordinate(nodes) {
+  const map = new Map();
+  nodes.forEach((node) => {
+    if (!node?.position) return;
+    map.set(coordinateKey(node.position.x, node.position.y), node);
+  });
+  return map;
+}
+
+function isWithinBounds(x, y, bounds) {
+  return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
+}
+
+function hasWaterNeighbor(node, nodesByCoordinate, bounds) {
+  if (!node?.position) return false;
+  return CARDINAL_DIRECTIONS.some((direction) => {
+    const x = node.position.x + direction.dx;
+    const y = node.position.y + direction.dy;
+    if (!isWithinBounds(x, y, bounds)) {
+      return true;
+    }
+    return !nodesByCoordinate.has(coordinateKey(x, y));
+  });
 }
 
 test("generated surface nodes stay within bounds and movements are reversible", () => {
@@ -79,6 +104,23 @@ test("generated islands expose gem pickups that match the required total", () =>
   const expected = candidateCount > 0 ? Math.min(candidateCount, Math.max(1, Math.round(candidateCount / 2))) : 0;
   assert.equal(gemActions.length, expected, "expected gem pickups to scale with map size");
   assert.equal(island.requiredGems, gemActions.length, "required gem count should equal pickup actions");
+});
+
+test("shell pickups appear on beach sand nodes only", () => {
+  const island = generateIsland({ random: createSeededRandom(23) });
+  const nodes = Object.values(island.nodes);
+  const nodesByCoordinate = buildNodesByCoordinate(nodes);
+
+  nodes.forEach((node) => {
+    const shellActions = node.actions.filter((action) => action.kind === "pickup" && action.item === "shell");
+    const isSand = node.biome === "sand";
+    const isBeach = isSand && node.id !== "ship" && hasWaterNeighbor(node, nodesByCoordinate, DEFAULT_GRID_BOUNDS);
+    if (isBeach) {
+      assert.ok(shellActions.length > 0, `expected shell pickup on beach node ${node.id}`);
+    } else {
+      assert.equal(shellActions.length, 0, `expected no shell pickups on non-beach node ${node.id}`);
+    }
+  });
 });
 
 test("surface graph remains connected via movement actions", () => {

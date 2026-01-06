@@ -83,11 +83,32 @@ function render() {
   }
 }
 
+function formatCount(count, singular, plural = `${singular}s`) {
+  const noun = count === 1 ? singular : plural;
+  return `${count} ${noun}`;
+}
+
+function formatInventorySummary(currentState, options = {}) {
+  const inventory = currentState?.inventory ?? {};
+  const includeGems = options.includeGems ?? false;
+  const includeZero = options.includeZero ?? false;
+  const entries = Object.entries(inventory).filter(([item, count]) => {
+    if (!Number.isFinite(count)) return false;
+    if (!includeGems && item === "gem") return false;
+    if (!includeZero && count <= 0) return false;
+    return true;
+  });
+  if (!entries.length) return "none";
+  return entries.map(([item, count]) => formatCount(count, item)).join(", ");
+}
+
 function renderProgress() {
   const visited = state.visitedNodes.size;
   const completed = countCompletedNodes(island, state);
+  const inventorySummary = formatInventorySummary(state, { includeGems: true });
   elements.progress.innerHTML = `
     <div>Gems: ${getItemCount(state, "gem")} / ${island.requiredGems}</div>
+    <div>Inventory: ${inventorySummary}</div>
     <div>Visited nodes: ${visited}</div>
     <div>Completed nodes: ${completed}</div>
   `;
@@ -319,7 +340,11 @@ function drawPlayerIcon(x, y, size) {
 }
 
 function drawMapProgress(width, height) {
-  const text = `Gems ${getItemCount(state, "gem")} / ${island.requiredGems}`;
+  const inventorySummary = formatInventorySummary(state);
+  const text =
+    inventorySummary === "none"
+      ? `Gems ${getItemCount(state, "gem")} / ${island.requiredGems}`
+      : `Gems ${getItemCount(state, "gem")} / ${island.requiredGems} • ${inventorySummary}`;
   mapCtx.save();
   mapCtx.fillStyle = LABEL_COLOR;
   mapCtx.font = "600 14px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace";
@@ -1208,9 +1233,6 @@ function placeFeatures(features, width, height, node) {
   const shuffledCorners = seededRandom ? shuffleSlots(cornerSlots, seededRandom) : cornerSlots;
   const slotQueue = centerSlot ? [...shuffledCorners, centerSlot] : shuffledCorners;
   features.forEach((feature) => {
-    if (!shouldRenderFeature(feature)) {
-      return;
-    }
     let slot = null;
     if (feature.type === "ship") {
       slot = {
@@ -1222,6 +1244,9 @@ function placeFeatures(features, width, height, node) {
       slot = slotQueue.shift();
     }
     if (!slot) return;
+    if (!shouldRenderFeature(feature)) {
+      return;
+    }
     layout.push({ ...feature, slot });
   });
   return layout;
@@ -1268,6 +1293,9 @@ function drawFeatures(features) {
         break;
       case "gem":
         drawGemFeature(slot);
+        break;
+      case "shell":
+        drawShellFeature(slot);
         break;
       case "sign":
         drawSignFeature(slot);
@@ -1370,6 +1398,34 @@ function drawGemFeature(slot) {
   sceneCtx.closePath();
   sceneCtx.fill();
   sceneCtx.stroke();
+  sceneCtx.restore();
+}
+
+function drawShellFeature(slot) {
+  const radius = FEATURE_SLOT_RADIUS * 0.6;
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#fde68a";
+  sceneCtx.strokeStyle = "#f59e0b";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x - radius, slot.y + radius * 0.45);
+  sceneCtx.arc(slot.x, slot.y + radius * 0.45, radius, Math.PI, 0);
+  sceneCtx.lineTo(slot.x + radius, slot.y + radius * 0.45);
+  sceneCtx.lineTo(slot.x, slot.y + radius * 1.1);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.strokeStyle = "rgba(146, 64, 14, 0.4)";
+  sceneCtx.lineWidth = 1.5;
+  const ridgeCount = 4;
+  for (let i = 0; i < ridgeCount; i += 1) {
+    const offset = (i - (ridgeCount - 1) / 2) * (radius * 0.4);
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(slot.x + offset * 0.9, slot.y - radius * 0.2);
+    sceneCtx.lineTo(slot.x + offset * 0.5, slot.y + radius * 0.9);
+    sceneCtx.stroke();
+  }
   sceneCtx.restore();
 }
 

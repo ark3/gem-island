@@ -69,6 +69,7 @@ export function generateIsland(options = {}) {
 
   addShipActions(shipNode);
   addBeachPerson(nodes, shipNode, nodesByCoordinate, bounds);
+  addShellsToBeachNodes(nodes, nodesByCoordinate, bounds);
 
   const gemHosts = selectGemHosts(nodes, shipNode, adjacency, random);
   gemHosts.forEach((node, index) => addGemToNode(node, index));
@@ -506,6 +507,14 @@ function addBeachPerson(nodes, shipNode, nodesByCoordinate, bounds) {
   });
 }
 
+function addShellsToBeachNodes(nodes, nodesByCoordinate, bounds) {
+  nodes.forEach((node) => {
+    if (!node || node.biome !== SAND_BIOME_ID || node.id === "ship") return;
+    if (!hasWaterNeighbor(node, nodesByCoordinate, bounds)) return;
+    addShellToNode(node);
+  });
+}
+
 function addGemToNode(node) {
   const actionId = `${node.id}_pickup_gem`;
   node.actions.push({
@@ -521,6 +530,25 @@ function addGemToNode(node) {
     actionId,
     amount: 1,
     item: "gem",
+  });
+}
+
+function addShellToNode(node) {
+  const actionId = `${node.id}_pickup_shell`;
+  node.actions.push({
+    id: actionId,
+    kind: "pickup",
+    label: "Pick Up Shell",
+    item: "shell",
+    amount: 1,
+  });
+  node.features.push({
+    id: `${node.id}_shell_feature`,
+    type: "shell",
+    actionId,
+    amount: 1,
+    item: "shell",
+    removable: true,
   });
 }
 
