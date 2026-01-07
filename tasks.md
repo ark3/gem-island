@@ -19,10 +19,12 @@
   - *Context:* Logic must handle "Condition Met" (consume items, mark feature complete, spawn reward) vs "Already Complete" (flavor text).
 - DONE: Implement conditional logic (check visited nodes, check inventory, check completed features).
 - DONE: Implement quest metadata on talk actions (type, target, dialog lines, optional consume).
+- DONE: Add quest catalog definitions (quest givers, targets/items, dialog).
 - Implement reward spawning (completing a quest reveals a gem).
   - Keep island immutable: define reward gem features/actions up front and gate their visibility with feature-complete conditions (derived state).
   - *Context:* Add `req` or `condition` fields to Actions; update `getVisibleActions` to filter.
-- Update generator to place NPCs/Signs and attach quest metadata to talk actions.
+- Update generator to place NPCs/Signs and attach quest metadata from quest catalog to talk actions.
+- Update generator to place discoverable targets and quest collectible items.
 
 ## Track: Rendering and Visuals
 - DONE: Add more biomes (forest, desert, others?).
