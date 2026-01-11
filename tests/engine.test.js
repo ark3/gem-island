@@ -430,7 +430,7 @@ function listGemPickups(island) {
   const entries = [];
   Object.values(island.nodes).forEach((node) => {
     node.actions
-      .filter((action) => action.kind === "pickup" && action.item === "gem")
+      .filter((action) => action.kind === "pickup" && action.item === "gem" && !action.condition)
       .forEach((action) => entries.push({ nodeId: node.id, actionId: action.id }));
   });
   return entries;
@@ -502,10 +502,30 @@ test("visiting generated nodes without actions immediately counts toward complet
   assert.ok(after > before, "visiting a zero-action node should increase completion");
 });
 
-test("completing gem hosts on generated islands advances derived completion", () => {
-  const island = generateIsland({ random: createSeededRandom(37) });
-  const gemEntry = listGemPickups(island)[0];
-  assert.ok(gemEntry, "expected at least one gem pickup");
+test("completing a simple gem host advances derived completion", () => {
+  let island = null;
+  let gemEntry = null;
+  let gemActionIds = new Set();
+  for (let seed = 37; seed < 80; seed += 1) {
+    const candidate = generateIsland({ random: createSeededRandom(seed) });
+    const entries = listGemPickups(candidate);
+    const actionIds = new Set(entries.map((entry) => entry.actionId));
+    const match = entries.find((entry) => {
+      const node = candidate.nodes[entry.nodeId];
+      const features = Array.isArray(node.features) ? node.features : [];
+      return (
+        features.length > 0 &&
+        features.every((feature) => feature.type === "gem" && actionIds.has(feature.actionId))
+      );
+    });
+    if (match) {
+      island = candidate;
+      gemEntry = match;
+      gemActionIds = actionIds;
+      break;
+    }
+  }
+  assert.ok(gemEntry, "expected at least one simple gem host");
   let state = createInitialState(island);
   const graph = buildMovementGraph(island);
   const path = findMovementPath(graph, state.currentNodeId, gemEntry.nodeId);
@@ -518,6 +538,7 @@ test("completing gem hosts on generated islands advances derived completion", ()
   state = pickup.state;
   const after = countCompletedNodes(island, state);
   assert.equal(after, before + 1, "finishing the pickup should mark the host node as completed");
+  assert.ok(gemActionIds.has(gemEntry.actionId), "gem entry should be part of the base gem set");
 });
 
 test("nodes only report completion when every feature is done", () => {
@@ -565,7 +586,7 @@ test("generated islands can be completed via movement and pickups", () => {
       const path = findMovementPath(graph, state.currentNodeId, entry.nodeId);
       path.forEach((moveAction) => play(moveAction));
       const node = island.nodes[entry.nodeId];
-      const pickupActions = node.actions.filter((action) => action.kind === "pickup");
+      const pickupActions = node.actions.filter((action) => action.kind === "pickup" && !action.condition);
       pickupActions.forEach((action) => {
         const pickup = play(action.id);
         if (action.item === "gem") {
@@ -583,10 +604,19 @@ test("generated islands can be completed via movement and pickups", () => {
     assert.equal(state.status, "success");
     assert.equal(state.inventory.gem, island.requiredGems);
 
+    const gemActionIds = new Set(gemPickups.map((entry) => entry.actionId));
+    const expectedCompleted = Object.values(island.nodes).filter((node) => {
+      const features = Array.isArray(node.features) ? node.features : [];
+      return (
+        node.id === "ship" ||
+        (features.length > 0 &&
+          features.every((feature) => feature.type === "gem" && gemActionIds.has(feature.actionId)))
+      );
+    }).length;
     const completed = countCompletedNodes(island, state);
     assert.ok(
-      completed >= gemPickups.length + 1,
-      `expected at least ship plus gem hosts completed for seed ${seed}`
+      completed >= expectedCompleted,
+      `expected at least ship plus simple gem hosts completed for seed ${seed}`
     );
   }
 });

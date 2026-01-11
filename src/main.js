@@ -214,7 +214,7 @@ function renderScene(node, actions) {
           const isComplete = state?.completedFeatures?.has(feature.id) ?? false;
           return { ...normalized, isComplete };
         })
-        .filter((feature) => feature && shouldRenderFeature(feature))
+        .filter((feature) => feature)
     : [];
   lastFeatureLayout = placeFeatures(normalizedFeatures, width, height, node);
   lastFeatureAnchors = buildFeatureAnchors(lastFeatureLayout, width, height);
@@ -1227,29 +1227,51 @@ function buildPathOutline(movementEntries, width, height, centerX, centerY, thic
 function placeFeatures(features, width, height, node) {
   const layout = [];
   const slots = getFeatureSlots(width, height);
-  const centerSlot = slots[slots.length - 1];
-  const cornerSlots = slots.slice(0, -1);
-  const seededRandom = node?.id ? createSeededRandom(hashString(node.id)) : null;
-  const shuffledCorners = seededRandom ? shuffleSlots(cornerSlots, seededRandom) : cornerSlots;
-  const slotQueue = centerSlot ? [...shuffledCorners, centerSlot] : shuffledCorners;
+  const slotsById = new Map(slots.map((slot) => [slot.id, slot]));
+  const allocation = allocateFeatureSlots(features, slotsById);
   features.forEach((feature) => {
-    let slot = null;
-    if (feature.type === "ship") {
-      slot = {
-        id: "ship-dock",
-        x: width * 0.35,
-        y: Math.min(height - 80, height * 0.6),
-      };
-    } else {
-      slot = slotQueue.shift();
-    }
+    const slot = feature.type === "ship" ? getShipSlot(width, height) : allocation.get(feature.id);
     if (!slot) return;
-    if (!shouldRenderFeature(feature)) {
-      return;
-    }
+    if (!shouldRenderFeature(feature)) return;
     layout.push({ ...feature, slot });
   });
   return layout;
+}
+
+function getShipSlot(width, height) {
+  return {
+    id: "ship-dock",
+    x: width * 0.35,
+    y: Math.min(height - 80, height * 0.6),
+  };
+}
+
+function allocateFeatureSlots(features, slotsById) {
+  const allocation = new Map();
+  const available = Array.from(slotsById.values());
+  const assignables = features.filter((feature) => feature.type !== "ship" && feature.id);
+  const usedSlotIds = new Set();
+
+  assignables.forEach((feature) => {
+    if (feature.slotId && slotsById.has(feature.slotId)) {
+      const slot = slotsById.get(feature.slotId);
+      allocation.set(feature.id, slot);
+      usedSlotIds.add(feature.slotId);
+    }
+  });
+
+  const remainingSlots = available.filter((slot) => !usedSlotIds.has(slot.id));
+  const remainingFeatures = assignables
+    .filter((feature) => !allocation.has(feature.id))
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  remainingFeatures.forEach((feature, index) => {
+    const slot = remainingSlots[index];
+    if (!slot) return;
+    allocation.set(feature.id, slot);
+  });
+  return allocation;
 }
 
 function getFeatureSlots(width, height) {
@@ -1266,23 +1288,6 @@ function getFeatureSlots(width, height) {
   return corners;
 }
 
-function shuffleSlots(slots, random) {
-  const result = slots.slice();
-  for (let i = result.length - 1; i > 0; i -= 1) {
-    const swapIndex = Math.floor(random() * (i + 1));
-    [result[i], result[swapIndex]] = [result[swapIndex], result[i]];
-  }
-  return result;
-}
-
-function hashString(value) {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 31 + value.charCodeAt(i)) % 2147483647;
-  }
-  return hash;
-}
-
 function drawFeatures(features) {
   features.forEach((feature) => {
     const { slot } = feature;
@@ -1297,8 +1302,35 @@ function drawFeatures(features) {
       case "shell":
         drawShellFeature(slot);
         break;
+      case "pebble":
+        drawPebbleFeature(slot);
+        break;
+      case "pinecone":
+        drawPineconeFeature(slot);
+        break;
+      case "wildflower":
+        drawWildflowerFeature(slot);
+        break;
+      case "carrot":
+        drawCarrotFeature(slot);
+        break;
       case "sign":
         drawSignFeature(slot);
+        break;
+      case "sandcastle":
+        drawSandcastleFeature(slot);
+        break;
+      case "cave_sign":
+        drawCaveSignFeature(slot);
+        break;
+      case "owl":
+        drawOwlFeature(slot);
+        break;
+      case "kite":
+        drawKiteFeature(slot);
+        break;
+      case "tractor":
+        drawTractorFeature(slot);
         break;
       case "person":
         drawPersonFeature(slot);
@@ -1426,6 +1458,207 @@ function drawShellFeature(slot) {
     sceneCtx.lineTo(slot.x + offset * 0.5, slot.y + radius * 0.9);
     sceneCtx.stroke();
   }
+  sceneCtx.restore();
+}
+
+function drawPebbleFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#cbd5f5";
+  sceneCtx.strokeStyle = "#64748b";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.beginPath();
+  sceneCtx.ellipse(slot.x, slot.y + 6, 22, 14, 0, 0, Math.PI * 2);
+  sceneCtx.fill();
+  sceneCtx.stroke();
+  sceneCtx.restore();
+}
+
+function drawPineconeFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#8b5e34";
+  sceneCtx.strokeStyle = "#5b3a1d";
+  sceneCtx.lineWidth = 2.5;
+  const width = 26;
+  const height = 40;
+  sceneCtx.beginPath();
+  sceneCtx.ellipse(slot.x, slot.y + 6, width / 2, height / 2, 0, 0, Math.PI * 2);
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+  sceneCtx.lineWidth = 1.5;
+  for (let i = -2; i <= 2; i += 1) {
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(slot.x - 10, slot.y - 6 + i * 6);
+    sceneCtx.lineTo(slot.x + 10, slot.y + 2 + i * 6);
+    sceneCtx.stroke();
+  }
+  sceneCtx.restore();
+}
+
+function drawWildflowerFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.strokeStyle = "#166534";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y + 18);
+  sceneCtx.lineTo(slot.x, slot.y - 6);
+  sceneCtx.stroke();
+
+  sceneCtx.fillStyle = "#facc15";
+  const petalRadius = 7;
+  const petalCount = 6;
+  for (let i = 0; i < petalCount; i += 1) {
+    const angle = (i / petalCount) * Math.PI * 2;
+    sceneCtx.beginPath();
+    sceneCtx.arc(
+      slot.x + Math.cos(angle) * 10,
+      slot.y - 12 + Math.sin(angle) * 6,
+      petalRadius,
+      0,
+      Math.PI * 2
+    );
+    sceneCtx.fill();
+  }
+  sceneCtx.fillStyle = "#f59e0b";
+  sceneCtx.beginPath();
+  sceneCtx.arc(slot.x, slot.y - 12, 5, 0, Math.PI * 2);
+  sceneCtx.fill();
+  sceneCtx.restore();
+}
+
+function drawCarrotFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#f97316";
+  sceneCtx.strokeStyle = "#c2410c";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y + 24);
+  sceneCtx.lineTo(slot.x - 12, slot.y - 10);
+  sceneCtx.lineTo(slot.x + 12, slot.y - 10);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.strokeStyle = "#166534";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y - 14);
+  sceneCtx.lineTo(slot.x - 8, slot.y - 26);
+  sceneCtx.moveTo(slot.x, slot.y - 14);
+  sceneCtx.lineTo(slot.x + 8, slot.y - 26);
+  sceneCtx.stroke();
+  sceneCtx.restore();
+}
+
+function drawSandcastleFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#f5d791";
+  sceneCtx.strokeStyle = "#c0841a";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.fillRect(slot.x - 22, slot.y - 2, 44, 28);
+  sceneCtx.strokeRect(slot.x - 22, slot.y - 2, 44, 28);
+  sceneCtx.fillRect(slot.x - 28, slot.y - 18, 18, 16);
+  sceneCtx.strokeRect(slot.x - 28, slot.y - 18, 18, 16);
+  sceneCtx.fillRect(slot.x + 10, slot.y - 18, 18, 16);
+  sceneCtx.strokeRect(slot.x + 10, slot.y - 18, 18, 16);
+
+  sceneCtx.fillStyle = "#f59e0b";
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y - 24);
+  sceneCtx.lineTo(slot.x, slot.y - 34);
+  sceneCtx.lineTo(slot.x + 10, slot.y - 32);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.restore();
+}
+
+function drawCaveSignFeature(slot) {
+  sceneCtx.save();
+  const postHeight = 50;
+  const postWidth = 12;
+  sceneCtx.fillStyle = "#5b3a1d";
+  sceneCtx.fillRect(slot.x - postWidth / 2, slot.y, postWidth, postHeight);
+
+  const boardWidth = 90;
+  const boardHeight = 44;
+  const boardX = slot.x - boardWidth / 2;
+  const boardY = slot.y - boardHeight + 6;
+  sceneCtx.fillStyle = "#d9cab3";
+  sceneCtx.strokeStyle = "#5f4b3a";
+  sceneCtx.lineWidth = 3;
+  sceneCtx.fillRect(boardX, boardY, boardWidth, boardHeight);
+  sceneCtx.strokeRect(boardX, boardY, boardWidth, boardHeight);
+
+  sceneCtx.fillStyle = "#3f2a1d";
+  sceneCtx.fillRect(boardX + 12, boardY + 12, boardWidth - 24, 6);
+  sceneCtx.fillRect(boardX + 18, boardY + 24, boardWidth - 36, 6);
+  sceneCtx.restore();
+}
+
+function drawOwlFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#6b4b2c";
+  sceneCtx.strokeStyle = "#3f2a1d";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.beginPath();
+  sceneCtx.ellipse(slot.x, slot.y + 4, 20, 26, 0, 0, Math.PI * 2);
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.fillStyle = "#fef3c7";
+  sceneCtx.beginPath();
+  sceneCtx.ellipse(slot.x - 8, slot.y - 2, 6, 8, 0, 0, Math.PI * 2);
+  sceneCtx.ellipse(slot.x + 8, slot.y - 2, 6, 8, 0, 0, Math.PI * 2);
+  sceneCtx.fill();
+
+  sceneCtx.fillStyle = "#0f172a";
+  sceneCtx.beginPath();
+  sceneCtx.arc(slot.x - 8, slot.y - 2, 2.5, 0, Math.PI * 2);
+  sceneCtx.arc(slot.x + 8, slot.y - 2, 2.5, 0, Math.PI * 2);
+  sceneCtx.fill();
+  sceneCtx.restore();
+}
+
+function drawKiteFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#60a5fa";
+  sceneCtx.strokeStyle = "#1d4ed8";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y - 28);
+  sceneCtx.lineTo(slot.x + 24, slot.y);
+  sceneCtx.lineTo(slot.x, slot.y + 28);
+  sceneCtx.lineTo(slot.x - 24, slot.y);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.stroke();
+
+  sceneCtx.strokeStyle = "#0f172a";
+  sceneCtx.lineWidth = 2;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(slot.x, slot.y + 28);
+  sceneCtx.lineTo(slot.x + 18, slot.y + 42);
+  sceneCtx.lineTo(slot.x + 8, slot.y + 54);
+  sceneCtx.stroke();
+  sceneCtx.restore();
+}
+
+function drawTractorFeature(slot) {
+  sceneCtx.save();
+  sceneCtx.fillStyle = "#16a34a";
+  sceneCtx.strokeStyle = "#166534";
+  sceneCtx.lineWidth = 2.5;
+  sceneCtx.fillRect(slot.x - 28, slot.y - 4, 56, 24);
+  sceneCtx.strokeRect(slot.x - 28, slot.y - 4, 56, 24);
+  sceneCtx.fillRect(slot.x - 10, slot.y - 24, 26, 18);
+  sceneCtx.strokeRect(slot.x - 10, slot.y - 24, 26, 18);
+
+  sceneCtx.fillStyle = "#0f172a";
+  sceneCtx.beginPath();
+  sceneCtx.arc(slot.x - 18, slot.y + 22, 10, 0, Math.PI * 2);
+  sceneCtx.arc(slot.x + 18, slot.y + 22, 12, 0, Math.PI * 2);
+  sceneCtx.fill();
   sceneCtx.restore();
 }
 

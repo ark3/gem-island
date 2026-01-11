@@ -100,7 +100,7 @@ export function getVisibleActions(island, state, node) {
   if (!node) return [];
   const visible = [];
   node.actions.forEach((action) => {
-    if (action.condition && !evaluateCondition(island, state, action.condition)) {
+    if (action.condition && action.kind !== "say" && !evaluateCondition(island, state, action.condition)) {
       return;
     }
     const isCompleted = action.kind !== "move" ? state.completedActions.has(action.id) : false;

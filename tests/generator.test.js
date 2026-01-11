@@ -19,6 +19,10 @@ function getGemActions(island) {
   return actions;
 }
 
+function getBaseGemActions(island) {
+  return getGemActions(island).filter(({ action }) => !action.condition);
+}
+
 function buildNodesByCoordinate(nodes) {
   const map = new Map();
   nodes.forEach((node) => {
@@ -30,6 +34,10 @@ function buildNodesByCoordinate(nodes) {
 
 function isWithinBounds(x, y, bounds) {
   return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
+}
+
+function manhattanDistance(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function hasWaterNeighbor(node, nodesByCoordinate, bounds) {
@@ -98,7 +106,7 @@ test("generated islands expose gem pickups that match the required total", () =>
     "ship node must include the ship action"
   );
 
-  const gemActions = getGemActions(island).map((entry) => entry.action);
+  const gemActions = getBaseGemActions(island).map((entry) => entry.action);
 
   const candidateCount = nodes.length - 1;
   const expected = candidateCount > 0 ? Math.min(candidateCount, Math.max(1, Math.round(candidateCount / 2))) : 0;
@@ -111,15 +119,72 @@ test("shell pickups appear on beach sand nodes only", () => {
   const nodes = Object.values(island.nodes);
   const nodesByCoordinate = buildNodesByCoordinate(nodes);
 
-  nodes.forEach((node) => {
-    const shellActions = node.actions.filter((action) => action.kind === "pickup" && action.item === "shell");
+  const shellNodes = nodes.filter((node) =>
+    node.actions.some((action) => action.kind === "pickup" && action.item === "shell")
+  );
+
+  shellNodes.forEach((node) => {
     const isSand = node.biome === "sand";
     const isBeach = isSand && node.id !== "ship" && hasWaterNeighbor(node, nodesByCoordinate, DEFAULT_GRID_BOUNDS);
-    if (isBeach) {
-      assert.ok(shellActions.length > 0, `expected shell pickup on beach node ${node.id}`);
-    } else {
-      assert.equal(shellActions.length, 0, `expected no shell pickups on non-beach node ${node.id}`);
-    }
+    assert.ok(isBeach, `expected shell pickup on beach sand node ${node.id}`);
+  });
+});
+
+test("discover quests place non-adjacent giver/target pairs in matching biomes", () => {
+  const island = generateIsland({ random: createSeededRandom(41) });
+  const nodes = Object.values(island.nodes);
+  const featureLookup = new Map();
+  nodes.forEach((node) => {
+    (node.features || []).forEach((feature) => {
+      featureLookup.set(feature.id, node);
+    });
+  });
+
+  const discoverGivers = [];
+  nodes.forEach((node) => {
+    node.actions.forEach((action) => {
+      if (action.kind !== "say" || !action.condition) return;
+      if (action.condition.type !== "featureComplete") return;
+      discoverGivers.push({ node, action });
+    });
+  });
+
+  discoverGivers.forEach(({ node, action }) => {
+    const targetNode = featureLookup.get(action.condition.featureId);
+    assert.ok(targetNode, `discover quest should reference a target feature for ${action.id}`);
+    assert.notEqual(node.id, targetNode.id, "discover quest giver and target should be different nodes");
+    assert.equal(node.biome, targetNode.biome, "discover quest giver and target should share a biome");
+    const distance = manhattanDistance(node.position, targetNode.position);
+    assert.ok(distance >= 2, "discover quest giver and target should be non-adjacent");
+  });
+});
+
+test("collect quests place distinct item nodes matching the required amount", () => {
+  const island = generateIsland({ random: createSeededRandom(53) });
+  const nodes = Object.values(island.nodes);
+  const collectGivers = [];
+  nodes.forEach((node) => {
+    node.actions.forEach((action) => {
+      if (action.kind !== "say" || !action.condition) return;
+      if (action.condition.type !== "hasItem") return;
+      collectGivers.push({ node, action });
+    });
+  });
+
+  collectGivers.forEach(({ node, action }) => {
+    const amount = action.condition.amount;
+    assert.ok(amount >= 2 && amount <= 4, "collect quest amount should be between 2 and 4");
+    const itemId = action.condition.item;
+    const itemActions = [];
+    nodes.forEach((entry) => {
+      entry.actions
+        .filter((candidate) => candidate.kind === "pickup" && candidate.item === itemId)
+        .forEach((candidate) => itemActions.push({ node: entry, action: candidate }));
+    });
+    assert.equal(itemActions.length, amount, "collect quest should place one item per required count");
+    itemActions.forEach((entry) => {
+      assert.notEqual(entry.node.id, node.id, "collect items should not appear on the giver node");
+    });
   });
 });
 
@@ -175,7 +240,7 @@ test("required gem count scales with map size", () => {
     maxNodes: 16,
     random: createSeededRandom(19),
   });
-  const gemActions = getGemActions(island);
+  const gemActions = getBaseGemActions(island);
   const candidateCount = Object.keys(island.nodes).length - 1; // exclude ship
   const expected = Math.min(candidateCount, Math.max(1, Math.round(candidateCount / 2)));
   assert.equal(gemActions.length, expected, "gem placements should match the scaled requirement");
@@ -189,7 +254,7 @@ test("ship and gem nodes expose matching feature payloads", () => {
   assert.ok(shipFeature, "ship feature should exist");
   assert.ok(ship.actions.some((action) => action.id === shipFeature.actionId), "ship feature must reference an action");
 
-  const gemEntries = getGemActions(island);
+  const gemEntries = getBaseGemActions(island);
   assert.ok(gemEntries.length > 0, "expected at least one gem host");
   gemEntries.forEach(({ node, action }) => {
     const feature = node.features.find((entry) => entry.type === "gem" && entry.actionId === action.id);
@@ -261,7 +326,7 @@ test("multiple seeds continue to respect generator invariants", () => {
       `all nodes should remain reachable for seed ${seed}`
     );
 
-    const gemActions = getGemActions(island);
+    const gemActions = getBaseGemActions(island);
     assert.equal(
       gemActions.length,
       island.requiredGems,

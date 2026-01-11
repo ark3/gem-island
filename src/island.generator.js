@@ -1,5 +1,6 @@
 import { getBiomeById, listBiomes } from "./biomes.js";
 import { CARDINAL_DIRECTIONS, coordinateKey, createMovementActionsForNode } from "./island-utils.js";
+import { QUEST_CATALOG } from "./quest-catalog.js";
 
 export const DEFAULT_GRID_BOUNDS = Object.freeze({
   minX: -5,
@@ -13,6 +14,7 @@ export const MAX_SURFACE_NODES = 30;
 const MIN_GEMS = 1;
 const SURFACE_BIOMES = listBiomes().filter((biome) => biome.id !== "dock");
 const SAND_BIOME_ID = "sand";
+const FEATURE_SLOT_IDS = ["southwest", "northeast", "northwest", "southeast", "center-low"];
 
 export function getShipStartPosition(bounds = DEFAULT_GRID_BOUNDS) {
   return { x: 0, y: bounds.maxY };
@@ -69,7 +71,7 @@ export function generateIsland(options = {}) {
 
   addShipActions(shipNode);
   addBeachPerson(nodes, shipNode, nodesByCoordinate, bounds);
-  addShellsToBeachNodes(nodes, nodesByCoordinate, bounds);
+  addQuestsToIsland(nodes, shipNode, adjacency, nodesByCoordinate, bounds, random);
 
   const gemHosts = selectGemHosts(nodes, shipNode, adjacency, random);
   gemHosts.forEach((node, index) => addGemToNode(node, index));
@@ -223,6 +225,10 @@ function isEdgeNode(node, bounds) {
 
 function calculateDistance(position, centroid) {
   return Math.abs(position.x - centroid.x) + Math.abs(position.y - centroid.y);
+}
+
+function manhattanDistance(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function calculateMaxDistance(nodes, centroid) {
@@ -475,7 +481,7 @@ function addShipActions(node) {
     kind: "ship",
     label: "Sail Away",
   });
-  node.features.push({
+  addFeature(node, {
     id: "ship_feature",
     type: "ship",
     biomeVariant: node.biome,
@@ -500,18 +506,344 @@ function addBeachPerson(nodes, shipNode, nodesByCoordinate, bounds) {
     label: "Say hi",
     message: "Surf's up, dude!",
   });
-  target.features.push({
+  addFeature(target, {
     id: `${target.id}_surfer_feature`,
     type: "person",
     actionId,
   });
 }
 
-function addShellsToBeachNodes(nodes, nodesByCoordinate, bounds) {
+function addQuestsToIsland(nodes, shipNode, adjacency, nodesByCoordinate, bounds, random) {
+  const surfaceNodes = nodes.filter((node) => node.id !== shipNode.id);
+  if (!surfaceNodes.length) return;
+  const nodesByBiome = groupNodesByBiome(surfaceNodes);
+  const questCount = determineQuestCount(surfaceNodes.length);
+  if (questCount <= 0) return;
+
+  const discoverEligible = QUEST_CATALOG.filter(
+    (quest) => quest.type === "discover" && hasNonAdjacentPair(nodesByBiome.get(quest.biome))
+  );
+  const collectEligible = QUEST_CATALOG.filter(
+    (quest) => quest.type === "collect" && (nodesByBiome.get(quest.biome)?.length ?? 0) >= 3
+  );
+  const selectedQuests = selectQuestsForIsland(questCount, discoverEligible, collectEligible, random);
+
+  const usedGiverNodes = new Set();
+  const usedTargetNodes = new Set();
+  const usedItemNodes = new Set();
+
+  selectedQuests.forEach((quest) => {
+    const biomeNodes = nodesByBiome.get(quest.biome) || [];
+    if (quest.type === "discover") {
+      const placement = pickDiscoverPlacement(biomeNodes, usedGiverNodes, usedTargetNodes, usedItemNodes, random);
+      if (!placement) return;
+      const targetActionId = `${placement.target.id}_${quest.id}_discover`;
+      const targetFeatureId = `${placement.target.id}_${quest.id}_feature`;
+      addDiscoverTarget(placement.target, quest, targetActionId, targetFeatureId);
+
+      const giverActionId = `${placement.giver.id}_${quest.id}_giver`;
+      const giverFeatureId = `${placement.giver.id}_${quest.id}_giver_feature`;
+      addQuestGiver(placement.giver, quest, giverActionId, giverFeatureId, {
+        type: "featureComplete",
+        featureId: targetFeatureId,
+      });
+      addRewardGem(placement.giver, giverFeatureId, quest.id);
+
+      usedGiverNodes.add(placement.giver.id);
+      usedTargetNodes.add(placement.target.id);
+      return;
+    }
+
+    if (quest.type === "collect") {
+      const placement = pickCollectPlacement(
+        biomeNodes,
+        usedGiverNodes,
+        usedItemNodes,
+        usedTargetNodes,
+        adjacency,
+        shipNode,
+        nodesByCoordinate,
+        bounds,
+        quest,
+        random
+      );
+      if (!placement) return;
+
+      const giverActionId = `${placement.giver.id}_${quest.id}_giver`;
+      const giverFeatureId = `${placement.giver.id}_${quest.id}_giver_feature`;
+      addQuestGiver(
+        placement.giver,
+        quest,
+        giverActionId,
+        giverFeatureId,
+        {
+          type: "hasItem",
+          item: quest.item.id,
+          amount: placement.itemCount,
+        },
+        {
+          item: quest.item.id,
+          amount: placement.itemCount,
+        }
+      );
+      addRewardGem(placement.giver, giverFeatureId, quest.id);
+
+      placement.itemNodes.forEach((node, index) => {
+        addCollectItemToNode(node, quest.item.id, quest.id, index);
+        usedItemNodes.add(node.id);
+      });
+      usedGiverNodes.add(placement.giver.id);
+    }
+  });
+}
+
+function groupNodesByBiome(nodes) {
+  const nodesByBiome = new Map();
   nodes.forEach((node) => {
-    if (!node || node.biome !== SAND_BIOME_ID || node.id === "ship") return;
-    if (!hasWaterNeighbor(node, nodesByCoordinate, bounds)) return;
-    addShellToNode(node);
+    if (!node?.biome) return;
+    if (!nodesByBiome.has(node.biome)) {
+      nodesByBiome.set(node.biome, []);
+    }
+    nodesByBiome.get(node.biome).push(node);
+  });
+  return nodesByBiome;
+}
+
+function determineQuestCount(surfaceNodeCount) {
+  if (surfaceNodeCount <= 6) return 1;
+  if (surfaceNodeCount <= 10) return 2;
+  return 3;
+}
+
+function hasNonAdjacentPair(nodes) {
+  if (!nodes || nodes.length < 2) return false;
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const distance = manhattanDistance(nodes[i].position, nodes[j].position);
+      if (distance >= 2) return true;
+    }
+  }
+  return false;
+}
+
+function selectQuestsForIsland(questCount, discoverPool, collectPool, random) {
+  const selected = [];
+  const usedBiomes = new Set();
+  const discover = discoverPool.slice();
+  const collect = collectPool.slice();
+
+  const tryPick = (pool) => {
+    const options = pool.filter((quest) => !usedBiomes.has(quest.biome));
+    if (!options.length) return null;
+    const pick = pickRandom(options, random);
+    if (!pick) return null;
+    selected.push(pick);
+    usedBiomes.add(pick.biome);
+    const index = pool.findIndex((quest) => quest.id === pick.id);
+    if (index >= 0) pool.splice(index, 1);
+    return pick;
+  };
+
+  if (questCount <= 0) return selected;
+  if (questCount === 1) {
+    if (!tryPick(discover)) {
+      tryPick(collect);
+    }
+    return selected;
+  }
+
+  tryPick(discover);
+  tryPick(collect);
+
+  while (selected.length < questCount) {
+    const pool =
+      discover.length && collect.length
+        ? random() < 0.5
+          ? discover
+          : collect
+        : discover.length
+          ? discover
+          : collect;
+    if (!pool.length) break;
+    if (!tryPick(pool)) {
+      if (!tryPick(discover) && !tryPick(collect)) break;
+    }
+  }
+
+  return selected;
+}
+
+function pickDiscoverPlacement(biomeNodes, usedGiverNodes, usedTargetNodes, usedItemNodes, random) {
+  const giverCandidates = biomeNodes.filter(
+    (node) => node && !usedGiverNodes.has(node.id) && !usedTargetNodes.has(node.id) && !usedItemNodes.has(node.id)
+  );
+  const targetCandidates = biomeNodes.filter(
+    (node) => node && !usedGiverNodes.has(node.id) && !usedTargetNodes.has(node.id) && !usedItemNodes.has(node.id)
+  );
+  const pairs = [];
+  giverCandidates.forEach((giver) => {
+    targetCandidates.forEach((target) => {
+      if (giver.id === target.id) return;
+      const distance = manhattanDistance(giver.position, target.position);
+      if (distance < 2) return;
+      const score = distance <= 4 ? 2 : 1;
+      pairs.push({ giver, target, distance, score });
+    });
+  });
+  if (!pairs.length) return null;
+  pairs.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    return a.distance - b.distance;
+  });
+  const bestScore = pairs[0].score;
+  const bestDistance = pairs[0].distance;
+  const bestPairs = pairs.filter((pair) => pair.score === bestScore && pair.distance === bestDistance);
+  const pick = pickRandom(bestPairs, random);
+  return pick ? { giver: pick.giver, target: pick.target } : null;
+}
+
+function pickCollectPlacement(
+  biomeNodes,
+  usedGiverNodes,
+  usedItemNodes,
+  usedTargetNodes,
+  adjacency,
+  shipNode,
+  nodesByCoordinate,
+  bounds,
+  quest,
+  random
+) {
+  const giverCandidates = biomeNodes.filter(
+    (node) => node && !usedGiverNodes.has(node.id) && !usedTargetNodes.has(node.id)
+  );
+  const giver = pickQuestGiverNode(giverCandidates, adjacency, shipNode, random);
+  if (!giver) return null;
+
+  const desiredCount = determineCollectItemCount(biomeNodes.length);
+  const itemCandidates = biomeNodes.filter(
+    (node) =>
+      node &&
+      node.id !== giver.id &&
+      !usedItemNodes.has(node.id) &&
+      !usedTargetNodes.has(node.id) &&
+      !usedGiverNodes.has(node.id)
+  );
+  const preferred = quest.biome === SAND_BIOME_ID
+    ? itemCandidates.filter((node) => hasWaterNeighbor(node, nodesByCoordinate, bounds))
+    : [];
+  const finalCandidates = preferred.length ? preferred : itemCandidates;
+  if (finalCandidates.length < 2) return null;
+
+  const itemCount = Math.min(desiredCount, finalCandidates.length);
+  const sortedCandidates = finalCandidates
+    .slice()
+    .sort(
+      (a, b) =>
+        manhattanDistance(b.position, giver.position) - manhattanDistance(a.position, giver.position)
+    );
+  const itemNodes = sortedCandidates.slice(0, itemCount);
+  if (itemNodes.length < 2) return null;
+
+  return { giver, itemNodes, itemCount };
+}
+
+function determineCollectItemCount(nodeCount) {
+  if (nodeCount >= 7) return 4;
+  if (nodeCount >= 5) return 3;
+  return 2;
+}
+
+function pickQuestGiverNode(candidates, adjacency, shipNode, random) {
+  if (!candidates.length) return null;
+  const scored = candidates.map((node) => ({
+    node,
+    degree: adjacency.get(node.id)?.length ?? 0,
+    distance: manhattanDistance(node.position, shipNode.position),
+  }));
+  scored.sort((a, b) => {
+    const aGroup = a.degree >= 2 ? 1 : 0;
+    const bGroup = b.degree >= 2 ? 1 : 0;
+    if (aGroup !== bGroup) return bGroup - aGroup;
+    if (a.distance !== b.distance) return a.distance - b.distance;
+    return 0;
+  });
+  const bestGroup = scored[0].degree >= 2 ? 1 : 0;
+  const bestDistance = scored[0].distance;
+  const finalists = scored.filter(
+    (entry) => (entry.degree >= 2 ? 1 : 0) === bestGroup && entry.distance === bestDistance
+  );
+  return pickRandom(finalists, random)?.node ?? scored[0].node;
+}
+
+function addQuestGiver(node, quest, actionId, featureId, condition, consume) {
+  node.actions.push({
+    id: actionId,
+    kind: "say",
+    label: "Talk",
+    dialog: quest.dialog,
+    condition,
+    consume,
+  });
+  addFeature(node, {
+    id: featureId,
+    type: quest.giver.type,
+    actionId,
+  });
+}
+
+function addDiscoverTarget(node, quest, actionId, featureId) {
+  node.actions.push({
+    id: actionId,
+    kind: "say",
+    label: "Look",
+    message: quest.target.description,
+  });
+  addFeature(node, {
+    id: featureId,
+    type: quest.target.type,
+    actionId,
+  });
+}
+
+function addCollectItemToNode(node, itemId, questId, index) {
+  const actionId = `${node.id}_${questId}_pickup_${itemId}_${index}`;
+  const label = `Pick Up ${formatItemLabel(itemId)}`;
+  node.actions.push({
+    id: actionId,
+    kind: "pickup",
+    label,
+    item: itemId,
+    amount: 1,
+  });
+  addFeature(node, {
+    id: `${node.id}_${questId}_${itemId}_feature_${index}`,
+    type: itemId,
+    actionId,
+    amount: 1,
+    item: itemId,
+    removable: true,
+  });
+}
+
+function addRewardGem(node, giverFeatureId, questId) {
+  const actionId = `${node.id}_${questId}_reward_gem`;
+  const condition = { type: "featureComplete", featureId: giverFeatureId };
+  node.actions.push({
+    id: actionId,
+    kind: "pickup",
+    label: "Pick Up Gem",
+    item: "gem",
+    amount: 1,
+    condition,
+  });
+  addFeature(node, {
+    id: `${node.id}_${questId}_reward_gem_feature`,
+    type: "gem",
+    actionId,
+    amount: 1,
+    item: "gem",
+    condition,
   });
 }
 
@@ -524,7 +856,7 @@ function addGemToNode(node) {
     item: "gem",
     amount: 1,
   });
-  node.features.push({
+  addFeature(node, {
     id: `${node.id}_gem_feature`,
     type: "gem",
     actionId,
@@ -533,23 +865,22 @@ function addGemToNode(node) {
   });
 }
 
-function addShellToNode(node) {
-  const actionId = `${node.id}_pickup_shell`;
-  node.actions.push({
-    id: actionId,
-    kind: "pickup",
-    label: "Pick Up Shell",
-    item: "shell",
-    amount: 1,
-  });
-  node.features.push({
-    id: `${node.id}_shell_feature`,
-    type: "shell",
-    actionId,
-    amount: 1,
-    item: "shell",
-    removable: true,
-  });
+function formatItemLabel(itemId) {
+  return itemId
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function addFeature(node, feature) {
+  const slotId = feature.slotId ?? (feature.type === "ship" ? "ship" : assignSlotId(node));
+  node.features.push({ ...feature, slotId });
+}
+
+function assignSlotId(node) {
+  const used = new Set((node.features || []).map((feature) => feature.slotId).filter(Boolean));
+  return FEATURE_SLOT_IDS.find((slotId) => !used.has(slotId)) || FEATURE_SLOT_IDS[FEATURE_SLOT_IDS.length - 1];
 }
 
 function findNearestNode(nodes, position) {
