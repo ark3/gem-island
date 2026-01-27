@@ -40,7 +40,7 @@ const PROMPT_CARD_MARGIN = 16;
 const SCENE_FRAME_COLOR = "#030712";
 const SCENE_FRAME_LINE_WIDTH = 6;
 const PATH_THICKNESS = 44;
-const MAP_BACKGROUND = "#020617";
+const MAP_BACKGROUND = "#1e3a5f";
 const MAP_GRID_COLOR = "#0f172a";
 const MAP_PLAYER_COLOR = "#f8fafc";
 const HIDE_PROMPTS = false;
@@ -1297,7 +1297,7 @@ function drawFeatures(features) {
         drawShipFeature(slot);
         break;
       case "gem":
-        drawGemFeature(slot);
+        drawGemFeature(feature);
         break;
       case "shell":
         drawShellFeature(slot);
@@ -1417,10 +1417,11 @@ function drawPersonFeature(slot) {
   sceneCtx.restore();
 }
 
-function drawGemFeature(slot) {
+function drawGemFeature(feature) {
+  const { slot, color } = feature;
   sceneCtx.save();
-  sceneCtx.fillStyle = "#f472b6";
-  sceneCtx.strokeStyle = "#fbcfe8";
+  sceneCtx.fillStyle = color?.fill ?? "#f472b6";
+  sceneCtx.strokeStyle = color?.stroke ?? "#fbcfe8";
   sceneCtx.lineWidth = 3;
   sceneCtx.beginPath();
   sceneCtx.moveTo(slot.x, slot.y - FEATURE_SLOT_RADIUS / 2);

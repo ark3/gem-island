@@ -117,3 +117,20 @@ test("typing engine reports failure when no prompt matches", () => {
   assert.equal(activated, null);
   assert.equal(lastBuffer, "xy"); // buffer remains until cleared manually
 });
+
+test("typing engine limits buffer to 15 characters", () => {
+  let lastBuffer = "";
+  const engine = new TypingEngine({
+    actions: [],
+    onActivate: () => {},
+    onBufferChange: (buffer) => {
+      lastBuffer = buffer;
+    },
+  });
+
+  const longInput = "abcdefghijklmnopqrstuvwxyz";
+  [...longInput].forEach((char) => engine.append(char));
+
+  assert.equal(lastBuffer.length, 15);
+  assert.equal(lastBuffer, "abcdefghijklmno");
+});

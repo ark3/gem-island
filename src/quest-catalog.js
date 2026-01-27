@@ -6,7 +6,7 @@ export const QUEST_CATALOG = [
     giver: { type: "person", title: "Child" },
     item: { id: "shell", amount: 2 },
     dialog: {
-      incomplete: "I'm making a necklace. Can you bring me some shells?",
+      incomplete: "I'm making a necklace. Can you bring me {amount} {items}?",
       success: "You brought me shells. Thank you!",
       complete: "My necklace looks great now.",
     },
@@ -33,7 +33,7 @@ export const QUEST_CATALOG = [
     giver: { type: "person", title: "Miner" },
     item: { id: "pebble", amount: 2 },
     dialog: {
-      incomplete: "I'm looking for shiny pebbles. Can you find some?",
+      incomplete: "I'm looking for {amount} shiny {items}. Can you find them?",
       success: "You found shiny pebbles. They're perfect.",
       complete: "Keep your eyes peeled for shiny stones.",
     },
@@ -60,7 +60,7 @@ export const QUEST_CATALOG = [
     giver: { type: "person", title: "Ranger" },
     item: { id: "pinecone", amount: 2 },
     dialog: {
-      incomplete: "Could you bring me some pinecones?",
+      incomplete: "Could you bring me {amount} {items}?",
       success: "You brought pinecones. That's just what I needed.",
       complete: "Thanks again for the pinecones.",
     },
@@ -87,7 +87,7 @@ export const QUEST_CATALOG = [
     giver: { type: "person", title: "Traveler" },
     item: { id: "wildflower", amount: 2 },
     dialog: {
-      incomplete: "I want wildflowers for my pack. Can you help?",
+      incomplete: "I want {amount} {items} for my pack. Can you help?",
       success: "You found wildflowers. They're beautiful.",
       complete: "The wildflowers smell so nice.",
     },
@@ -114,7 +114,7 @@ export const QUEST_CATALOG = [
     giver: { type: "person", title: "Farmer" },
     item: { id: "carrot", amount: 2 },
     dialog: {
-      incomplete: "I need carrots for dinner. Can you bring some?",
+      incomplete: "I need {amount} {items} for dinner. Can you bring them?",
       success: "You brought carrots. Thank you!",
       complete: "Dinner will be tasty tonight.",
     },

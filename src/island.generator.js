@@ -12,6 +12,14 @@ export const DEFAULT_GRID_BOUNDS = Object.freeze({
 export const MIN_SURFACE_NODES = 20;
 export const MAX_SURFACE_NODES = 30;
 const MIN_GEMS = 1;
+const GEM_COLORS = [
+  { fill: "#f472b6", stroke: "#fbcfe8" }, // pink (original)
+  { fill: "#60a5fa", stroke: "#bfdbfe" }, // blue
+  { fill: "#4ade80", stroke: "#bbf7d0" }, // green
+  { fill: "#c084fc", stroke: "#e9d5ff" }, // purple
+  { fill: "#facc15", stroke: "#fef08a" }, // yellow
+  { fill: "#f97316", stroke: "#fed7aa" }, // orange
+];
 const SURFACE_BIOMES = listBiomes().filter((biome) => biome.id !== "dock");
 const SAND_BIOME_ID = "sand";
 const FEATURE_SLOT_IDS = ["southwest", "northeast", "northwest", "southeast", "center-low"];
@@ -432,18 +440,7 @@ function findCentralHole(bounds, shipPosition) {
 }
 
 function createMapLandmarks(nodes, shipNode, nodesByCoordinate, bounds, forcedPosition) {
-  const surfaceNodes = nodes.filter((node) => node.id !== shipNode.id);
-  if (!surfaceNodes.length) return [];
-  const position =
-    forcedPosition || findNearestEmptyCoordinate(calculateCentroid(surfaceNodes), nodesByCoordinate, bounds);
-  if (!position) return [];
-  return [
-    {
-      id: "volcano",
-      type: "volcano",
-      position,
-    },
-  ];
+  return [];
 }
 
 function findNearestEmptyCoordinate(centroid, nodesByCoordinate, bounds) {
@@ -777,11 +774,21 @@ function pickQuestGiverNode(candidates, adjacency, shipNode, random) {
 }
 
 function addQuestGiver(node, quest, actionId, featureId, condition, consume) {
+  let dialog = quest.dialog;
+  if (consume?.amount && consume?.item) {
+    const items = formatItemLabel(consume.item) + "s";
+    dialog = {
+      ...quest.dialog,
+      incomplete: quest.dialog.incomplete
+        .replace("{amount}", consume.amount)
+        .replace("{items}", items),
+    };
+  }
   node.actions.push({
     id: actionId,
     kind: "say",
     label: "Talk",
-    dialog: quest.dialog,
+    dialog,
     condition,
     consume,
   });
@@ -829,6 +836,8 @@ function addCollectItemToNode(node, itemId, questId, index) {
 function addRewardGem(node, giverFeatureId, questId) {
   const actionId = `${node.id}_${questId}_reward_gem`;
   const condition = { type: "featureComplete", featureId: giverFeatureId };
+  const colorIndex = questId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const color = GEM_COLORS[colorIndex % GEM_COLORS.length];
   node.actions.push({
     id: actionId,
     kind: "pickup",
@@ -844,11 +853,13 @@ function addRewardGem(node, giverFeatureId, questId) {
     amount: 1,
     item: "gem",
     condition,
+    color,
   });
 }
 
-function addGemToNode(node) {
+function addGemToNode(node, colorIndex = 0) {
   const actionId = `${node.id}_pickup_gem`;
+  const color = GEM_COLORS[colorIndex % GEM_COLORS.length];
   node.actions.push({
     id: actionId,
     kind: "pickup",
@@ -862,6 +873,7 @@ function addGemToNode(node) {
     actionId,
     amount: 1,
     item: "gem",
+    color,
   });
 }
 

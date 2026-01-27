@@ -1,3 +1,5 @@
+const MAX_BUFFER_LENGTH = 15;
+
 export class TypingEngine {
   constructor({ actions, onActivate, onBufferChange }) {
     this.actions = Array.isArray(actions) ? actions : [];
@@ -13,6 +15,7 @@ export class TypingEngine {
   }
 
   append(char) {
+    if (this.buffer.length >= MAX_BUFFER_LENGTH) return;
     this.buffer += char;
     this.emitChange();
   }

@@ -337,3 +337,44 @@ test("multiple seeds continue to respect generator invariants", () => {
     assert.equal(gemActions.length, expected, `seed ${seed} gem count should scale with map size`);
   }
 });
+
+test("gem features have color properties with fill and stroke", () => {
+  const island = generateIsland({ random: createSeededRandom(42) });
+  const gemFeatures = [];
+  Object.values(island.nodes).forEach((node) => {
+    (node.features || [])
+      .filter((feature) => feature.type === "gem")
+      .forEach((feature) => gemFeatures.push({ node, feature }));
+  });
+
+  assert.ok(gemFeatures.length > 0, "expected at least one gem feature");
+  gemFeatures.forEach(({ node, feature }) => {
+    assert.ok(feature.color, `gem feature on ${node.id} should have a color`);
+    assert.ok(feature.color.fill, `gem feature on ${node.id} should have a fill color`);
+    assert.ok(feature.color.stroke, `gem feature on ${node.id} should have a stroke color`);
+  });
+});
+
+test("collect quest dialog includes item count", () => {
+  const island = generateIsland({ random: createSeededRandom(99) });
+  const collectActions = [];
+  Object.values(island.nodes).forEach((node) => {
+    node.actions
+      .filter((action) => action.kind === "say" && action.consume?.amount)
+      .forEach((action) => collectActions.push({ node, action }));
+  });
+
+  assert.ok(collectActions.length > 0, "expected at least one collect quest giver");
+  collectActions.forEach(({ node, action }) => {
+    const incomplete = action.dialog?.incomplete || "";
+    const amount = action.consume.amount;
+    assert.ok(
+      incomplete.includes(String(amount)),
+      `quest giver on ${node.id} should include amount ${amount} in dialog, got: "${incomplete}"`
+    );
+    assert.ok(
+      !incomplete.includes("{amount}") && !incomplete.includes("{items}"),
+      `quest giver on ${node.id} should have placeholders replaced, got: "${incomplete}"`
+    );
+  });
+});
