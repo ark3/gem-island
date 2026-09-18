@@ -28,16 +28,20 @@ prompt list is supplied. `src/main.js` calls `createPromptService()` with no
 arguments, so that fallback is what ships. Every prompt in the running game is a
 single letter.
 
-**Rationale:** not recorded at the time. The commit message states the change
-without explaining it, and no document mentions it. The surrounding context —
-this is a game for a young child, and the later `bc71be0` commit is titled "Add
-kid-requested fixes" — suggests it was a deliberate step down in difficulty for
-a pre-reading or early-reading player, but that is inference, not record.
+**Rationale:** at the time, finding a single key was slow enough for the player
+that one letter per prompt was a good starting difficulty. Whole words would
+have been a wall rather than a ramp.
 
-**Why it is under review:** the intended player is now older and specifically
-interested in typing practice. Single letters train key-finding, not typing.
-`createPromptTrainer({ prompts: [...] })` already accepts a word list and
-weights entries evenly, so the plumbing for a reversal exists and is unused.
+_(Confirmed by the author on 2026-09-18. The original commit message recorded
+the change without the reasoning, and no document mentioned it — this entry is
+why the log exists.)_
+
+**Why it is under review:** the condition that justified the decision has
+expired. The player is older, now types fast enough that single keys no longer
+pace the game, and is specifically motivated to practise typing. Single letters
+train key-finding, not typing. `createPromptTrainer({ prompts: [...] })` already
+accepts a word list and weights entries evenly, so the plumbing for a reversal
+exists and is unused.
 
 **If this is reversed**, update this entry rather than deleting it, and note
 that `initial-full-design.md` becomes accurate again.

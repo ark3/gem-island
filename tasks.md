@@ -19,14 +19,13 @@ _Last reconciled against `main`: 2026-09-18._
 
 ## Now
 
-The agreed next steps, in order:
-
-- [ ] **Infra refresh.** CI pins are three majors behind and Node 22 has aged
-      out of Active LTS. See *Track: Infrastructure*.
-- [ ] **Decide PR #2** ("Renderer Redesign Proposal"). Recommendation: close.
-      See *Track: Rendering and Visuals*.
 - [ ] **Typing progression.** The track that matches the player's current
-      interest, and the only one never started. See *Track: Typing Progression*.
+      interest, and the only one never started. Start with D1: swap single-letter
+      prompts for words. See *Track: Typing Progression*.
+- [ ] **Headless smoke test in CI.** The one infra item left, deferred because it
+      needs a dependency decision. See *Track: Infrastructure*.
+
+_Cleared 2026-09-18: infra refresh, PR #2 decision._
 
 ---
 
@@ -54,12 +53,14 @@ seams for exactly this work.
 ## Track: Rendering and Visuals
 
 - [ ] Improve path rendering.
-- [?] **PR #2, "Renderer Redesign Proposal"** — open since 2026-02-01,
-      unreviewed, doc-only. Proposes replacing the top-down view with a frontal
-      perspective ("Storybook Vignette"). **Recommendation: close.** It cites
-      `visual-v1.md`'s coloring-book aesthetic as support while reversing that
-      same document's explicit "slightly tilted top-down view" camera decision,
-      without acknowledging the conflict. Closing it preserves the branch.
+- [x] **PR #2, "Renderer Redesign Proposal"** — closed unmerged 2026-09-18.
+      Proposed replacing the top-down view with a frontal perspective
+      ("Storybook Vignette") while reversing `visual-v1.md`'s explicit "slightly
+      tilted top-down view" camera decision without acknowledging the conflict;
+      doc-only and unreviewed since 2026-02-01. Branch
+      `renderer-redesign-proposal-16992835481382031485` is retained, so the
+      three proposals are recoverable if a perspective camera is ever
+      reconsidered deliberately — which should start by revising `visual-v1.md`.
 - [x] Add more biomes — forest, plains, farm, sand, rock, dock (`0ca4e90`,
       `e17ea52`)
 - [x] Improve feature rendering (`a3c6745`, `ca7cc5f`, `fbedbfd`)
@@ -69,15 +70,21 @@ seams for exactly this work.
 
 Added 2026-09-18 after a repo review.
 
-- [ ] Bump `actions/checkout` v4 → v7 and `actions/setup-node` v4 → v7 in
-      `.github/workflows/test.yml`.
-- [ ] Bump CI `node-version` 22 → 24. Node 24 is Active LTS; 22 is in
-      maintenance. Tests currently pass on 22.
-- [ ] Add a `permissions:` block and a `concurrency:` group to the workflow.
-- [ ] Add a headless browser smoke test to CI. Playwright can drive the real
-      game — loading the page, typing prompts, and asserting no console errors
-      covers the ~60% of `src/` that has no tests today
+- [x] Bump `actions/checkout` v4 → v7 and `actions/setup-node` v4 → v7
+- [x] Bump CI `node-version` 22 → 24 (Active LTS; 22 is in maintenance). Suite
+      verified passing on Node 24.21.0 before the switch, 37/37.
+- [x] Add a `permissions: contents: read` block and a `concurrency:` group that
+      cancels superseded in-flight runs
+- [?] Add a headless browser smoke test to CI. Playwright can drive the real
+      game — loading the page, typing prompts, asserting no console errors —
+      covering the ~60% of `src/` with no tests today
       ([D4](docs/decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
+      **Blocked on a decision:** Playwright would be this repo's first
+      dependency and would require a `package.json`, breaking the
+      zero-dependency property that is the main reason the project still ran
+      untouched after eight months. Options: accept a dev-only dependency; pin
+      a CI-installed Playwright without committing a manifest; or leave the
+      renderer uncovered. Worth settling before any renderer work starts.
 
 ## Track: Pockets (Sub-Areas)
 
