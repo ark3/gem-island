@@ -1,40 +1,122 @@
-# High-Level Tasks
+# Gem Island — Work Tracker
 
-## Track: Inventory, Actions, Quests
-- DONE: Use repeatable talk actions (current `say` kind) for NPCs/signs.
-  - Talk actions remain available after activation.
-- DONE: Mark talk features as complete on first interaction for map completion.
-  - Do not remove or hide talk features or talk actions after completion.
-- DONE: Transition from `gemsCollected: number` to a generic inventory map (e.g., `{"gem": 5, "shell": 2}`).
-  - *Context:* Ensure Win Condition (ship action) checks "gem" count in this new map.
-- DONE: Update reducer to handle generic item pickups.
-- DONE: Update UI to display inventory counts.
-- DONE: Separate "completion" (logic state) from "removal" (visual state) for all non-consumable actions.
-  - Needed so quest givers can complete without disappearing.
-  - Currently only gems are removed, so talk appears to work by accident; make the rule explicit.
-  - Define a general rule or flag for which actions/features are removable vs repeatable.
-  - Drive visibility from that rule instead of completion status.
-- DONE: Implement quest givers via feature completion state (no standalone quest objects).
-  - Keep quest givers visible and interactive after completion.
-  - *Context:* Logic must handle "Condition Met" (consume items, mark feature complete, spawn reward) vs "Already Complete" (flavor text).
-- DONE: Implement conditional logic (check visited nodes, check inventory, check completed features).
-- DONE: Implement quest metadata on talk actions (type, target, dialog lines, optional consume).
-- DONE: Add quest catalog definitions (quest givers, targets/items, dialog).
-- DONE: Implement reward spawning (completing a quest reveals a gem).
-  - Keep island immutable: define reward gem features/actions up front and gate their visibility with feature-complete conditions (derived state).
-  - *Context:* Add `req` or `condition` fields to Actions; update `getVisibleActions` to filter.
-- DONE: Update generator to place NPCs/Signs and attach quest metadata from quest catalog to talk actions.
-- DONE: Update generator to place discoverable targets and quest collectible items.
+This file is the tracker. Design intent lives in [`docs/`](docs/README.md);
+deliberate divergences from it live in [`docs/decisions.md`](docs/decisions.md).
 
-## Track: Rendering and Visuals
-- DONE: Add more biomes (forest, desert, others?).
-- DONE: Improve feature rendering.
-- Improve path rendering.
+**Conventions**
+
+- `- [ ]` open · `- [x]` done · `- [~]` in progress · `- [?]` blocked or
+  undecided, with the blocker stated.
+- Done items keep their commit ref so the tracker and the history agree.
+- Anything that lands in the code belongs here before the branch merges. Two
+  commits (`bc71be0`, `8a4c114`) were missed in Jan 2026 and had to be
+  reconstructed from commit messages in Sept 2026 — that is the failure mode
+  this convention exists to prevent.
+
+_Last reconciled against `main`: 2026-09-18._
+
+---
+
+## Now
+
+The agreed next steps, in order:
+
+- [ ] **Infra refresh.** CI pins are three majors behind and Node 22 has aged
+      out of Active LTS. See *Track: Infrastructure*.
+- [ ] **Decide PR #2** ("Renderer Redesign Proposal"). Recommendation: close.
+      See *Track: Rendering and Visuals*.
+- [ ] **Typing progression.** The track that matches the player's current
+      interest, and the only one never started. See *Track: Typing Progression*.
+
+---
 
 ## Track: Typing Progression
-- Characterize player's typing ability.
-- Implement letter/word difficulty characterization.
-- Adjust action prompt difficulty based on player progress.
 
-## Track: Pockets aka Sub-Areas
-- Figure out a compelling reason to implement this.
+The whole track is unstarted. `prompt-service.js` has stub methods
+(`refresh()`, `peek()`) and an ignored `actionId` parameter that were left as
+seams for exactly this work.
+
+- [ ] Revisit [decision D1](docs/decisions.md#d1--typing-prompts-are-single-letters-not-words):
+      move from single-letter prompts to word prompts.
+      `createPromptTrainer({ prompts: [...] })` already accepts a word list, so
+      this is a word list plus a call-site change.
+- [ ] Characterize the player's typing ability. Nothing currently measures
+      typing at all — no timing, no accuracy, no per-letter statistics anywhere
+      in `src/`.
+- [ ] Implement letter/word difficulty characterization.
+- [ ] Adjust action prompt difficulty based on player progress. The trainer's
+      `weights` are currently a frozen constant; this is where adaptation hooks
+      in.
+- [ ] Either implement or remove the no-op stubs in `prompt-service.js`
+      (`refresh()` is called from `main.js` and does nothing; `peek()` returns
+      `null` and is never called).
+
+## Track: Rendering and Visuals
+
+- [ ] Improve path rendering.
+- [?] **PR #2, "Renderer Redesign Proposal"** — open since 2026-02-01,
+      unreviewed, doc-only. Proposes replacing the top-down view with a frontal
+      perspective ("Storybook Vignette"). **Recommendation: close.** It cites
+      `visual-v1.md`'s coloring-book aesthetic as support while reversing that
+      same document's explicit "slightly tilted top-down view" camera decision,
+      without acknowledging the conflict. Closing it preserves the branch.
+- [x] Add more biomes — forest, plains, farm, sand, rock, dock (`0ca4e90`,
+      `e17ea52`)
+- [x] Improve feature rendering (`a3c6745`, `ca7cc5f`, `fbedbfd`)
+- [x] Extract scene rendering into a standalone module (`8a4c114`)
+
+## Track: Infrastructure and Test Coverage
+
+Added 2026-09-18 after a repo review.
+
+- [ ] Bump `actions/checkout` v4 → v7 and `actions/setup-node` v4 → v7 in
+      `.github/workflows/test.yml`.
+- [ ] Bump CI `node-version` 22 → 24. Node 24 is Active LTS; 22 is in
+      maintenance. Tests currently pass on 22.
+- [ ] Add a `permissions:` block and a `concurrency:` group to the workflow.
+- [ ] Add a headless browser smoke test to CI. Playwright can drive the real
+      game — loading the page, typing prompts, and asserting no console errors
+      covers the ~60% of `src/` that has no tests today
+      ([D4](docs/decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
+
+## Track: Pockets (Sub-Areas)
+
+- [?] Figure out a compelling reason to implement this. Blocked by design, not
+      by code: `initial-full-design.md` explicitly calls pockets the last
+      feature to implement and only if they prove non-redundant.
+
+## Track: Inventory, Actions, Quests — complete
+
+Finished Jan 2026. Retained for context on why the model looks the way it does.
+
+- [x] Repeatable talk actions for NPCs and signs; talk features mark complete on
+      first interaction without being removed or hidden (`25b9060`, `3b1117f`)
+- [x] Generic inventory map (`{"gem": 5, "shell": 2}`) replacing
+      `gemsCollected`; ship win condition reads "gem" from it (`276b597`)
+- [x] Reducer handles generic item pickups; UI displays inventory counts
+      (`276b597`, `d66aeb2`)
+- [x] Completion (logic state) separated from removal (visual state) for all
+      non-consumable actions, driven by an explicit flag
+      ([D2](docs/decisions.md#d2--completion-and-removal-are-separate-explicitly-flagged-concerns), `9055c82`)
+- [x] Quest givers implemented via feature completion state, with no standalone
+      quest objects; they stay visible and interactive after completion
+      (`22b530b`)
+- [x] Conditional logic — visited nodes, inventory, completed features
+      (`6cdc90f`, `9ebdd45`)
+- [x] Quest metadata on talk actions: type, target, dialog lines, optional
+      consume (`ddbd91e`)
+- [x] Quest catalog definitions (`262f9cf`)
+- [x] Reward spawning via pre-placed, condition-gated features rather than
+      island mutation
+      ([D3](docs/decisions.md#d3--the-island-is-immutable-rewards-are-revealed-never-spawned), `9ebdd45`)
+- [x] Generator places NPCs, signs, discoverable targets and quest collectibles,
+      attaching quest metadata from the catalog (`fbedbfd`)
+
+## Unfiled — reconstructed 2026-09-18
+
+Work that landed without a tracker entry. Recorded here so the history is
+complete; no further action implied.
+
+- [x] Kid-requested fixes (`bc71be0`): limit typing buffer to 15 characters;
+      map ocean blue instead of black; remove the confusing volcano landmark;
+      random gem colors; show item count in collect-quest dialog via templates.
