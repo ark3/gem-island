@@ -1,1582 +1,1796 @@
-// Scene rendering module for Gem Island
-// Extracted from main.js to enable standalone rendering for visual test harnesses
+// Scene rendering for Gem Island.
+//
+// The layer stack described in `docs/rendering-v1.md`, drawn in the
+// coloring-book style described in `docs/visual-v2.md`:
+//
+//   1. page + frame       the scene sits on paper, inside an ink border
+//   2. coast              ocean at every edge with no neighbour
+//   3. land               one flat dominant colour, hand-inked contour
+//   4. adjacency hints    the neighbour's colour showing through each opening
+//   5. paths              a light trail from the centre to each opening
+//   6. decor              biome character: trees, boulders, furrows, blooms
+//   7. features           gems, people, signs, the ship
+//   8. explorer           the player, at the centre
+//   9. effects            sparkles and pickup bursts
+//  10. prompts            typing labels, attached to what they act on
+//
+// Layers 1-6 are static for a given node and canvas size, so they are painted
+// once into a cached offscreen canvas and blitted each frame. Everything above
+// them is redrawn live, which is what makes the scene animate cheaply.
 
 import { getBiomeById, resolveNodeColor } from "./biomes.js";
 import { normalizeFeatureEntry } from "./features.js";
 import { drawExplorer } from "./explorer.js";
+import {
+  ALERT,
+  HIGHLIGHT,
+  INK,
+  INK_LIGHT,
+  PAPER,
+  PAPER_DEEP,
+  READY,
+  alpha,
+  clamp,
+  easeOut,
+  font,
+  hatch,
+  inkCircle,
+  inkEllipse,
+  inkLine,
+  inkRect,
+  inkShape,
+  inkStar,
+  inkText,
+  lerp,
+  measureText,
+  mix,
+  noise,
+  signedNoise,
+  stipple,
+} from "./ink.js";
+
+export { clamp };
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const SCENE_DEFAULT_COLOR = "#0b1220";
-const ACCENT_COLOR = "#f472b6";
-const CARD_BACKGROUND = "#0b1220";
-const CARD_BORDER = "#1f2937";
-const LABEL_COLOR = "#e2e8f0";
-const PROMPT_COLOR = "#a5b4fc";
-const CENTER_PROMPT_HEIGHT = 54;
-const CENTER_PROMPT_GAP = 14;
-const MOVEMENT_PROMPT_HEIGHT = 52;
-const MOVEMENT_PROMPT_WIDTH = 168;
-const FEATURE_SLOT_RADIUS = 50;
-const ANCHORED_PROMPT_WIDTH = 190;
-const ANCHORED_PROMPT_HEIGHT = 52;
-const PROMPT_CARD_MARGIN = 16;
-const SCENE_FRAME_LINE_WIDTH = 6;
-const PATH_THICKNESS = 44;
+const FRAME_INSET = 10;
+const FRAME_RADIUS = 26;
+const FRAME_LINE = 5;
+
+const DIRECTIONS = ["north", "south", "east", "west"];
+
+const DIRECTION_VECTORS = {
+  north: { x: 0, y: -1 },
+  south: { x: 0, y: 1 },
+  west: { x: -1, y: 0 },
+  east: { x: 1, y: 0 },
+};
+
+// Feature anchor points, in frame-relative units. The diagonals keep features
+// clear of the movement prompts, which live at the edge midpoints.
+const SLOT_POSITIONS = [
+  { id: "northwest", u: 0.2, v: 0.26 },
+  { id: "northeast", u: 0.8, v: 0.26 },
+  { id: "southwest", u: 0.2, v: 0.71 },
+  { id: "southeast", u: 0.8, v: 0.71 },
+  { id: "center-low", u: 0.5, v: 0.82 },
+];
+
+const PROMPT_HEIGHT = 46;
+
+// How far a feature's prompt sits from its anchor, and which side it prefers.
+// Tall art (the ship, a person) needs more room than a pebble.
+const PROMPT_ANCHORS = {
+  ship: { below: 80, above: 150, prefer: "below" },
+  person: { below: 78, above: 96 },
+  sign: { below: 74, above: 88 },
+  cave_sign: { below: 74, above: 88 },
+  tractor: { below: 66, above: 80 },
+  sandcastle: { below: 62, above: 80 },
+  owl: { below: 62, above: 78 },
+  kite: { below: 98, above: 82 },
+  wildflower: { below: 60, above: 72 },
+  carrot: { below: 60, above: 72 },
+  default: { below: 58, above: 70 },
+};
+const PROMPT_PAD_X = 20;
+const PROMPT_MIN_WIDTH = 74;
+const PROMPT_FONT = 24;
 
 // ============================================================================
-// Pure Utilities
+// Small helpers
 // ============================================================================
 
-export function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-export function pseudoRandom(seed) {
-  const x = Math.sin(seed * 43758.5453);
-  return x - Math.floor(x);
-}
-
-export function drawRoundedRectPath(ctx, x, y, width, height, radius = 12) {
-  const r = Math.max(4, Math.min(radius, Math.min(width, height) / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-// ============================================================================
-// Texture Helpers
-// ============================================================================
-
-function drawTextureDots(ctx, { color, width, height, startY, endY, stepX, stepY }) {
-  ctx.save();
-  ctx.fillStyle = color;
-  const safeStartY = Math.max(startY, 40);
-  const safeEndY = Math.min(endY, height - 40);
-  for (let y = safeStartY; y < safeEndY; y += stepY) {
-    const stagger = (y / stepY) % 2 === 0 ? 0 : stepX / 2;
-    for (let x = 40 + stagger; x < width - 40; x += stepX) {
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
+function seedFromString(value) {
+  let hash = 0;
+  const text = String(value ?? "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) % 1000003;
   }
-  ctx.restore();
+  return hash + 1;
 }
 
-// ============================================================================
-// Feature Drawing Functions
-// ============================================================================
-
-function drawShipFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#1e3a8a";
-  ctx.strokeStyle = "#0f172a";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(slot.x - 40, slot.y + 30);
-  ctx.lineTo(slot.x + 40, slot.y + 30);
-  ctx.lineTo(slot.x + 20, slot.y - 20);
-  ctx.lineTo(slot.x - 20, slot.y - 20);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = "#e2e8f0";
-  ctx.fillRect(slot.x - 5, slot.y - 50, 10, 30);
-  ctx.fillStyle = "#94a3b8";
-  ctx.fillRect(slot.x - 30, slot.y - 50, 25, 15);
-  ctx.restore();
-}
-
-function drawSignFeature(ctx, slot) {
-  ctx.save();
-  const postHeight = 50;
-  const postWidth = 12;
-  ctx.fillStyle = "#7c3f1d";
-  ctx.fillRect(slot.x - postWidth / 2, slot.y, postWidth, postHeight);
-
-  const boardWidth = 90;
-  const boardHeight = 44;
-  const boardX = slot.x - boardWidth / 2;
-  const boardY = slot.y - boardHeight + 6;
-  ctx.fillStyle = "#f8dca8";
-  ctx.strokeStyle = "#8b5e34";
-  ctx.lineWidth = 3;
-  ctx.fillRect(boardX, boardY, boardWidth, boardHeight);
-  ctx.strokeRect(boardX, boardY, boardWidth, boardHeight);
-
-  ctx.fillStyle = "#6b4b2c";
-  ctx.fillRect(boardX + 10, boardY + 12, boardWidth - 20, 6);
-  ctx.fillRect(boardX + 16, boardY + 24, boardWidth - 32, 6);
-  ctx.restore();
-}
-
-function drawPersonFeature(ctx, slot) {
-  ctx.save();
-  const headRadius = 16;
-  ctx.fillStyle = "#b7795f";
-  ctx.beginPath();
-  ctx.arc(slot.x, slot.y - 26, headRadius, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#3f2a1d";
-  ctx.beginPath();
-  ctx.arc(slot.x, slot.y - 32, headRadius * 1.05, Math.PI, Math.PI * 2);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "#38bdf8";
-  ctx.strokeStyle = "#0ea5e9";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(slot.x - 22, slot.y - 6);
-  ctx.lineTo(slot.x + 22, slot.y - 6);
-  ctx.lineTo(slot.x + 16, slot.y + 34);
-  ctx.lineTo(slot.x - 16, slot.y + 34);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = "#0f172a";
-  ctx.fillRect(slot.x - 14, slot.y + 34, 28, 18);
-  ctx.restore();
-}
-
-function drawGemFeature(ctx, feature) {
-  const { slot, color } = feature;
-  ctx.save();
-  ctx.fillStyle = color?.fill ?? "#f472b6";
-  ctx.strokeStyle = color?.stroke ?? "#fbcfe8";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y - FEATURE_SLOT_RADIUS / 2);
-  ctx.lineTo(slot.x + FEATURE_SLOT_RADIUS / 2, slot.y);
-  ctx.lineTo(slot.x, slot.y + FEATURE_SLOT_RADIUS / 2);
-  ctx.lineTo(slot.x - FEATURE_SLOT_RADIUS / 2, slot.y);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawShellFeature(ctx, slot) {
-  const radius = FEATURE_SLOT_RADIUS * 0.6;
-  ctx.save();
-  ctx.fillStyle = "#fde68a";
-  ctx.strokeStyle = "#f59e0b";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(slot.x - radius, slot.y + radius * 0.45);
-  ctx.arc(slot.x, slot.y + radius * 0.45, radius, Math.PI, 0);
-  ctx.lineTo(slot.x + radius, slot.y + radius * 0.45);
-  ctx.lineTo(slot.x, slot.y + radius * 1.1);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(146, 64, 14, 0.4)";
-  ctx.lineWidth = 1.5;
-  const ridgeCount = 4;
-  for (let i = 0; i < ridgeCount; i += 1) {
-    const offset = (i - (ridgeCount - 1) / 2) * (radius * 0.4);
-    ctx.beginPath();
-    ctx.moveTo(slot.x + offset * 0.9, slot.y - radius * 0.2);
-    ctx.lineTo(slot.x + offset * 0.5, slot.y + radius * 0.9);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawPebbleFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#cbd5f5";
-  ctx.strokeStyle = "#64748b";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.ellipse(slot.x, slot.y + 6, 22, 14, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawPineconeFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#8b5e34";
-  ctx.strokeStyle = "#5b3a1d";
-  ctx.lineWidth = 2.5;
-  const width = 26;
-  const height = 40;
-  ctx.beginPath();
-  ctx.ellipse(slot.x, slot.y + 6, width / 2, height / 2, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-  ctx.lineWidth = 1.5;
-  for (let i = -2; i <= 2; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(slot.x - 10, slot.y - 6 + i * 6);
-    ctx.lineTo(slot.x + 10, slot.y + 2 + i * 6);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawWildflowerFeature(ctx, slot) {
-  ctx.save();
-  ctx.strokeStyle = "#166534";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y + 18);
-  ctx.lineTo(slot.x, slot.y - 6);
-  ctx.stroke();
-
-  ctx.fillStyle = "#facc15";
-  const petalRadius = 7;
-  const petalCount = 6;
-  for (let i = 0; i < petalCount; i += 1) {
-    const angle = (i / petalCount) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(
-      slot.x + Math.cos(angle) * 10,
-      slot.y - 12 + Math.sin(angle) * 6,
-      petalRadius,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  }
-  ctx.fillStyle = "#f59e0b";
-  ctx.beginPath();
-  ctx.arc(slot.x, slot.y - 12, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawCarrotFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#f97316";
-  ctx.strokeStyle = "#c2410c";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y + 24);
-  ctx.lineTo(slot.x - 12, slot.y - 10);
-  ctx.lineTo(slot.x + 12, slot.y - 10);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = "#166534";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y - 14);
-  ctx.lineTo(slot.x - 8, slot.y - 26);
-  ctx.moveTo(slot.x, slot.y - 14);
-  ctx.lineTo(slot.x + 8, slot.y - 26);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawSandcastleFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#f5d791";
-  ctx.strokeStyle = "#c0841a";
-  ctx.lineWidth = 2.5;
-  ctx.fillRect(slot.x - 22, slot.y - 2, 44, 28);
-  ctx.strokeRect(slot.x - 22, slot.y - 2, 44, 28);
-  ctx.fillRect(slot.x - 28, slot.y - 18, 18, 16);
-  ctx.strokeRect(slot.x - 28, slot.y - 18, 18, 16);
-  ctx.fillRect(slot.x + 10, slot.y - 18, 18, 16);
-  ctx.strokeRect(slot.x + 10, slot.y - 18, 18, 16);
-
-  ctx.fillStyle = "#f59e0b";
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y - 24);
-  ctx.lineTo(slot.x, slot.y - 34);
-  ctx.lineTo(slot.x + 10, slot.y - 32);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawCaveSignFeature(ctx, slot) {
-  ctx.save();
-  const postHeight = 50;
-  const postWidth = 12;
-  ctx.fillStyle = "#5b3a1d";
-  ctx.fillRect(slot.x - postWidth / 2, slot.y, postWidth, postHeight);
-
-  const boardWidth = 90;
-  const boardHeight = 44;
-  const boardX = slot.x - boardWidth / 2;
-  const boardY = slot.y - boardHeight + 6;
-  ctx.fillStyle = "#d9cab3";
-  ctx.strokeStyle = "#5f4b3a";
-  ctx.lineWidth = 3;
-  ctx.fillRect(boardX, boardY, boardWidth, boardHeight);
-  ctx.strokeRect(boardX, boardY, boardWidth, boardHeight);
-
-  ctx.fillStyle = "#3f2a1d";
-  ctx.fillRect(boardX + 12, boardY + 12, boardWidth - 24, 6);
-  ctx.fillRect(boardX + 18, boardY + 24, boardWidth - 36, 6);
-  ctx.restore();
-}
-
-function drawOwlFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#6b4b2c";
-  ctx.strokeStyle = "#3f2a1d";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.ellipse(slot.x, slot.y + 4, 20, 26, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = "#fef3c7";
-  ctx.beginPath();
-  ctx.ellipse(slot.x - 8, slot.y - 2, 6, 8, 0, 0, Math.PI * 2);
-  ctx.ellipse(slot.x + 8, slot.y - 2, 6, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#0f172a";
-  ctx.beginPath();
-  ctx.arc(slot.x - 8, slot.y - 2, 2.5, 0, Math.PI * 2);
-  ctx.arc(slot.x + 8, slot.y - 2, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawKiteFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#60a5fa";
-  ctx.strokeStyle = "#1d4ed8";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y - 28);
-  ctx.lineTo(slot.x + 24, slot.y);
-  ctx.lineTo(slot.x, slot.y + 28);
-  ctx.lineTo(slot.x - 24, slot.y);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = "#0f172a";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(slot.x, slot.y + 28);
-  ctx.lineTo(slot.x + 18, slot.y + 42);
-  ctx.lineTo(slot.x + 8, slot.y + 54);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawTractorFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "#16a34a";
-  ctx.strokeStyle = "#166534";
-  ctx.lineWidth = 2.5;
-  ctx.fillRect(slot.x - 28, slot.y - 4, 56, 24);
-  ctx.strokeRect(slot.x - 28, slot.y - 4, 56, 24);
-  ctx.fillRect(slot.x - 10, slot.y - 24, 26, 18);
-  ctx.strokeRect(slot.x - 10, slot.y - 24, 26, 18);
-
-  ctx.fillStyle = "#0f172a";
-  ctx.beginPath();
-  ctx.arc(slot.x - 18, slot.y + 22, 10, 0, Math.PI * 2);
-  ctx.arc(slot.x + 18, slot.y + 22, 12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawPlaceholderFeature(ctx, slot) {
-  ctx.save();
-  ctx.fillStyle = "rgba(15, 23, 42, 0.4)";
-  ctx.beginPath();
-  ctx.arc(slot.x, slot.y, FEATURE_SLOT_RADIUS / 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawFeature(ctx, feature) {
-  const { slot } = feature;
-  if (!slot) return;
-  switch (feature.type) {
-    case "ship":
-      drawShipFeature(ctx, slot);
-      break;
-    case "gem":
-      drawGemFeature(ctx, feature);
-      break;
-    case "shell":
-      drawShellFeature(ctx, slot);
-      break;
-    case "pebble":
-      drawPebbleFeature(ctx, slot);
-      break;
-    case "pinecone":
-      drawPineconeFeature(ctx, slot);
-      break;
-    case "wildflower":
-      drawWildflowerFeature(ctx, slot);
-      break;
-    case "carrot":
-      drawCarrotFeature(ctx, slot);
-      break;
-    case "sign":
-      drawSignFeature(ctx, slot);
-      break;
-    case "sandcastle":
-      drawSandcastleFeature(ctx, slot);
-      break;
-    case "cave_sign":
-      drawCaveSignFeature(ctx, slot);
-      break;
-    case "owl":
-      drawOwlFeature(ctx, slot);
-      break;
-    case "kite":
-      drawKiteFeature(ctx, slot);
-      break;
-    case "tractor":
-      drawTractorFeature(ctx, slot);
-      break;
-    case "person":
-      drawPersonFeature(ctx, slot);
-      break;
-    default:
-      drawPlaceholderFeature(ctx, slot);
-      break;
-  }
-}
-
-export function drawFeatures(ctx, features) {
-  features.forEach((feature) => drawFeature(ctx, feature));
-}
-
-// ============================================================================
-// Biome Background Drawing
-// ============================================================================
-
-function drawDockShore(ctx, biome, width, shoreHeight) {
-  const sandColor = "#f4d09c";
-  const grassColor = "#a7c957";
-  ctx.fillStyle = grassColor;
-  ctx.fillRect(0, 0, width, shoreHeight);
-  ctx.fillStyle = sandColor;
-  ctx.fillRect(0, shoreHeight * 0.4, width, shoreHeight * 0.6);
-  drawTextureDots(ctx, {
-    color: "rgba(107, 83, 43, 0.4)",
-    width,
-    height: shoreHeight,
-    startY: shoreHeight * 0.1,
-    endY: shoreHeight * 0.9,
-    stepX: 90,
-    stepY: 50,
-  });
-}
-
-function drawDockWater(ctx, biome, width, waterHeight, shoreHeight) {
-  const gradient = ctx.createLinearGradient(0, shoreHeight, 0, shoreHeight + waterHeight);
-  gradient.addColorStop(0, "#071633");
-  gradient.addColorStop(1, biome.edgeColor || "#1d4ed8");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, shoreHeight, width, waterHeight);
-
-  const waveCount = 5;
-  const spacing = waterHeight / (waveCount + 1);
-  ctx.strokeStyle = biome.accentColor || "rgba(219, 234, 254, 0.5)";
-  ctx.lineWidth = 3;
-  for (let i = 1; i <= waveCount; i += 1) {
-    const y = shoreHeight + i * spacing;
-    const step = width / 4;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    for (let segment = 0; segment < 4; segment += 1) {
-      const startX = segment * step;
-      const cpX = startX + step / 2;
-      const cpY = y + (segment % 2 === 0 ? 12 : -12);
-      const endX = startX + step;
-      ctx.quadraticCurveTo(cpX, cpY, endX, y);
-    }
-    ctx.stroke();
-  }
-}
-
-function drawDockBoat(ctx, biome, width, waterHeight, shoreHeight) {
-  const boatWidth = Math.max(140, width * 0.16);
-  const boatHeight = Math.max(70, waterHeight * 0.18);
-  const boatX = width * 0.75;
-  const boatY = shoreHeight + waterHeight * 0.35;
-  ctx.save();
-  ctx.translate(boatX, boatY);
-  ctx.rotate(-0.1);
-  ctx.fillStyle = "#1e293b";
-  ctx.strokeStyle = "#0f172a";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(-boatWidth / 2, boatHeight / 2);
-  ctx.lineTo(boatWidth / 2, boatHeight / 2);
-  ctx.quadraticCurveTo(boatWidth / 2 + 30, 0, boatWidth / 2, -boatHeight / 2);
-  ctx.lineTo(-boatWidth / 2, -boatHeight / 2);
-  ctx.quadraticCurveTo(-boatWidth / 2 - 30, 0, -boatWidth / 2, boatHeight / 2);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillRect(-6, -boatHeight / 2 - 20, 12, 30);
-  ctx.fillStyle = "#cbd5f5";
-  ctx.beginPath();
-  ctx.moveTo(0, -boatHeight / 2 - 20);
-  ctx.lineTo(boatWidth * 0.2, 0);
-  ctx.lineTo(0, boatHeight * 0.05);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawDockPier(ctx, biome, width, shoreHeight, pierWidth, pierHeight) {
-  const pierTop = shoreHeight;
-  const pierBottom = shoreHeight + pierHeight;
-  const pierCenter = width / 2;
-  ctx.save();
-
-  // shadow
-  ctx.fillStyle = "rgba(15, 23, 42, 0.35)";
-  ctx.beginPath();
-  ctx.moveTo(pierCenter - pierWidth / 2 - 10, pierBottom);
-  ctx.lineTo(pierCenter + pierWidth / 2 + 10, pierBottom);
-  ctx.lineTo(pierCenter + pierWidth / 2, pierTop + 20);
-  ctx.lineTo(pierCenter - pierWidth / 2, pierTop + 20);
-  ctx.closePath();
-  ctx.fill();
-
-  // planks
-  ctx.fillStyle = "#8d6b4a";
-  ctx.strokeStyle = "#4b341f";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(pierCenter - pierWidth / 2, pierBottom);
-  ctx.lineTo(pierCenter + pierWidth / 2, pierBottom);
-  ctx.lineTo(pierCenter + pierWidth * 0.35, pierTop);
-  ctx.lineTo(pierCenter - pierWidth * 0.35, pierTop);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  const plankSpacing = 36;
-  for (let y = pierBottom - plankSpacing; y > pierTop; y -= plankSpacing) {
-    const progress = (pierBottom - y) / pierHeight;
-    const widthAtY = pierWidth * (1 - 0.3 * progress);
-    ctx.beginPath();
-    ctx.moveTo(pierCenter - widthAtY / 2, y);
-    ctx.lineTo(pierCenter + widthAtY / 2, y);
-    ctx.stroke();
-  }
-
-  // posts
-  ctx.fillStyle = "#3f2c1c";
-  const postCount = 4;
-  for (let i = 0; i < postCount; i += 1) {
-    const t = i / (postCount - 1);
-    const topWidth = pierWidth * 0.35;
-    const widthAtT = topWidth + (pierWidth - topWidth) * t;
-    const xLeft = pierCenter - widthAtT / 2 - 12;
-    const xRight = pierCenter + widthAtT / 2 + 12;
-    const y = pierTop + pierHeight * t;
-    ctx.fillRect(xLeft, y - 60, 18, 60);
-    ctx.fillRect(xRight - 18, y - 60, 18, 60);
-  }
-
-  ctx.restore();
-}
-
-function drawDockBiomeDetails(ctx, biome, width, height) {
-  ctx.save();
-  const waterHeight = Math.max(height * 0.45, 200);
-  const shoreHeight = height - waterHeight;
-  const pierWidth = Math.max(width * 0.28, 150);
-  const pierHeight = Math.max(waterHeight * 0.75, 200);
-
-  drawDockShore(ctx, biome, width, shoreHeight);
-  drawDockWater(ctx, biome, width, waterHeight, shoreHeight);
-  drawDockPier(ctx, biome, width, shoreHeight, pierWidth, pierHeight);
-  drawDockBoat(ctx, biome, width, waterHeight, shoreHeight);
-
-  ctx.restore();
-}
-
-function drawSandDunes(ctx, biome, width, height) {
-  const duneColor = biome.duneAccent || "#fca311";
-  const duneCount = 3;
-  const baseY = height * 0.58;
-  ctx.save();
-  for (let i = 0; i < duneCount; i += 1) {
-    const offset = i % 2 === 0 ? 0 : 30;
-    const startX = (width / duneCount) * i - width * 0.2;
-    const duneWidth = width * 0.65;
-    ctx.globalAlpha = 0.18 + i * 0.12;
-    ctx.fillStyle = duneColor;
-    ctx.beginPath();
-    ctx.moveTo(startX, baseY + offset);
-    ctx.quadraticCurveTo(startX + duneWidth / 2, baseY - 50 - offset, startX + duneWidth, baseY + offset);
-    ctx.lineTo(startX + duneWidth, height);
-    ctx.lineTo(startX, height);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.restore();
-
-  drawTextureDots(ctx, {
-    color: "rgba(146, 64, 14, 0.25)",
-    width,
-    height,
-    startY: height * 0.35,
-    endY: height - 40,
-    stepX: 70,
-    stepY: 55,
-  });
-}
-
-function getNeighborIdForDirection(node, direction, getNodeIdAtPosition) {
-  if (!node?.position) return null;
-  const { x, y } = node.position;
-  switch (direction) {
-    case "north":
-      return getNodeIdAtPosition(x, y - 1);
-    case "south":
-      return getNodeIdAtPosition(x, y + 1);
-    case "west":
-      return getNodeIdAtPosition(x - 1, y);
-    case "east":
-      return getNodeIdAtPosition(x + 1, y);
-    default:
-      return null;
-  }
-}
-
-function hasNeighborInDirection(node, direction, getNodeIdAtPosition) {
-  const neighborId = getNeighborIdForDirection(node, direction, getNodeIdAtPosition);
-  return Boolean(neighborId);
-}
-
-function drawShoreFoam(ctx, direction, biome, sandRect, width, height) {
-  const foamColor = biome.foamColor || "#fef3c7";
-  const segments = 6;
-  const amplitude = 16;
-  ctx.save();
-  ctx.strokeStyle = foamColor;
-  ctx.lineWidth = 3;
-
-  switch (direction) {
-    case "north": {
-      const y = sandRect.y;
-      const segmentWidth = sandRect.width / segments;
-      ctx.beginPath();
-      for (let i = 0; i < segments; i += 1) {
-        const startX = sandRect.x + i * segmentWidth;
-        const cpX = startX + segmentWidth / 2;
-        const cpY = y - (i % 2 === 0 ? amplitude : -amplitude);
-        const endX = startX + segmentWidth;
-        if (i === 0) ctx.moveTo(startX, y);
-        ctx.quadraticCurveTo(cpX, cpY, endX, y);
-      }
-      ctx.stroke();
-      break;
-    }
-    case "south": {
-      const y = sandRect.y + sandRect.height;
-      const segmentWidth = sandRect.width / segments;
-      ctx.beginPath();
-      for (let i = 0; i < segments; i += 1) {
-        const startX = sandRect.x + i * segmentWidth;
-        const cpX = startX + segmentWidth / 2;
-        const cpY = y + (i % 2 === 0 ? amplitude : -amplitude);
-        const endX = startX + segmentWidth;
-        if (i === 0) ctx.moveTo(startX, y);
-        ctx.quadraticCurveTo(cpX, cpY, endX, y);
-      }
-      ctx.stroke();
-      break;
-    }
-    case "west": {
-      const x = sandRect.x;
-      const segmentHeight = sandRect.height / segments;
-      ctx.beginPath();
-      for (let i = 0; i < segments; i += 1) {
-        const startY = sandRect.y + i * segmentHeight;
-        const cpY = startY + segmentHeight / 2;
-        const cpX = x - (i % 2 === 0 ? amplitude : -amplitude);
-        const endY = startY + segmentHeight;
-        if (i === 0) ctx.moveTo(x, startY);
-        ctx.quadraticCurveTo(cpX, cpY, x, endY);
-      }
-      ctx.stroke();
-      break;
-    }
-    case "east": {
-      const x = sandRect.x + sandRect.width;
-      const segmentHeight = sandRect.height / segments;
-      ctx.beginPath();
-      for (let i = 0; i < segments; i += 1) {
-        const startY = sandRect.y + i * segmentHeight;
-        const cpY = startY + segmentHeight / 2;
-        const cpX = x + (i % 2 === 0 ? amplitude : -amplitude);
-        const endY = startY + segmentHeight;
-        if (i === 0) ctx.moveTo(x, startY);
-        ctx.quadraticCurveTo(cpX, cpY, x, endY);
-      }
-      ctx.stroke();
-      break;
-    }
-    default:
-      break;
-  }
-
-  ctx.restore();
-}
-
-function calculateSandRect(node, width, height, getNodeIdAtPosition) {
-  const shoreMargin = Math.min(width, height) * 0.18;
-  const padding = 12;
-  const hasNeighbor = (direction) =>
-    node ? hasNeighborInDirection(node, direction, getNodeIdAtPosition) : false;
-  const north = hasNeighbor("north") ? padding : shoreMargin;
-  const south = hasNeighbor("south") ? padding : shoreMargin;
-  const west = hasNeighbor("west") ? padding : shoreMargin;
-  const east = hasNeighbor("east") ? padding : shoreMargin;
+function makeFrame(width, height) {
   return {
-    x: west,
-    y: north,
-    width: Math.max(40, width - west - east),
-    height: Math.max(40, height - north - south),
+    x: FRAME_INSET,
+    y: FRAME_INSET,
+    width: Math.max(40, width - FRAME_INSET * 2),
+    height: Math.max(40, height - FRAME_INSET * 2),
+    radius: FRAME_RADIUS,
   };
 }
 
-function drawSandWaterFoam(ctx, node, biome, sandRect, width, height, getNodeIdAtPosition) {
-  if (!node) return;
-  const directions = ["north", "south", "east", "west"];
-  directions.forEach((direction) => {
-    if (hasNeighborInDirection(node, direction, getNodeIdAtPosition)) return;
-    drawShoreFoam(ctx, direction, biome, sandRect, width, height);
-  });
+function framePoint(frame, u, v) {
+  return { x: frame.x + frame.width * u, y: frame.y + frame.height * v };
 }
 
-function drawSandBiomeDetails(ctx, node, biome, width, height, getNodeIdAtPosition) {
-  ctx.save();
-  const waterColor = biome.waterColor || "#44b4e2";
-  ctx.fillStyle = waterColor;
-  ctx.fillRect(0, 0, width, height);
-
-  const sandRect = calculateSandRect(node, width, height, getNodeIdAtPosition);
-  const gradient = ctx.createLinearGradient(0, sandRect.y, 0, sandRect.y + sandRect.height);
-  gradient.addColorStop(0, biome.sandLight || "#fef3c7");
-  gradient.addColorStop(1, biome.sandShadow || "#eab676");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(sandRect.x, sandRect.y, sandRect.width, sandRect.height);
-
-  ctx.save();
+function roundedFramePath(ctx, frame, inset = 0) {
+  const x = frame.x + inset;
+  const y = frame.y + inset;
+  const w = frame.width - inset * 2;
+  const h = frame.height - inset * 2;
+  const r = Math.max(0, Math.min(frame.radius - inset * 0.5, Math.min(w, h) / 2));
   ctx.beginPath();
-  ctx.rect(sandRect.x, sandRect.y, sandRect.width, sandRect.height);
-  ctx.clip();
-  drawSandDunes(ctx, biome, width, height);
-  ctx.restore();
-
-  drawSandWaterFoam(ctx, node, biome, sandRect, width, height, getNodeIdAtPosition);
-
-  ctx.restore();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
-function drawRockPlates(ctx, biome, width, height) {
-  const plateColor = biome.ridgeAccent || "rgba(71, 85, 105, 0.4)";
-  const spacing = Math.max(70, Math.min(width, height) * 0.22);
-  ctx.save();
-  ctx.fillStyle = plateColor;
-  for (let layer = -2; layer <= 2; layer += 1) {
-    const offset = layer * spacing + spacing * 0.5;
-    const skew = layer % 2 === 0 ? width * 0.12 : width * 0.04;
-    ctx.beginPath();
-    ctx.moveTo(-skew, offset);
-    ctx.lineTo(width + skew, offset + spacing * 0.35);
-    ctx.lineTo(width + skew, offset + spacing * 0.35 + 18);
-    ctx.lineTo(-skew, offset + 18);
-    ctx.closePath();
-    ctx.globalAlpha = 0.15 + (layer + 2) * 0.05;
-    ctx.fill();
-  }
-  ctx.restore();
+function getNodeAtPosition(island, x, y) {
+  if (!island?.nodes) return null;
+  return (
+    Object.values(island.nodes).find((n) => n.position?.x === x && n.position?.y === y) || null
+  );
 }
 
-function drawRockBoulders(ctx, biome, width, height) {
-  const colors = [
-    biome.rockDark || "#4b5563",
-    biome.ridgeAccent || "#475569",
-    "rgba(15, 23, 42, 0.45)",
-  ];
-  const placements = [
-    { u: 0.2, v: 0.35, scale: 1.1 },
-    { u: 0.45, v: 0.28, scale: 0.9 },
-    { u: 0.65, v: 0.4, scale: 1.3 },
-    { u: 0.35, v: 0.55, scale: 0.8 },
-    { u: 0.7, v: 0.62, scale: 1.0 },
-    { u: 0.15, v: 0.6, scale: 0.7 },
-  ];
-  ctx.save();
-  placements.forEach((placement, index) => {
-    const baseRadius = Math.max(18, width * 0.04);
-    const noise = pseudoRandom(index + 1);
-    const radius = baseRadius * placement.scale * (0.85 + noise * 0.35);
-    const x = width * placement.u + (noise - 0.5) * 40;
-    const y = height * placement.v + (pseudoRandom(index + 10) - 0.5) * 30;
-    const rotation = pseudoRandom(index + 20) * Math.PI * 0.4;
-    ctx.beginPath();
-    ctx.ellipse(x, y, radius, radius * (0.6 + noise * 0.2), rotation, 0, Math.PI * 2);
-    ctx.fillStyle = colors[index % colors.length];
-    ctx.fill();
-  });
-  ctx.restore();
+function neighborInDirection(node, direction, island) {
+  if (!node?.position) return null;
+  const vector = DIRECTION_VECTORS[direction];
+  if (!vector) return null;
+  return getNodeAtPosition(island, node.position.x + vector.x, node.position.y + vector.y);
 }
 
-function drawRockCracks(ctx, biome, width, height) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(15, 23, 42, 0.35)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 3; i += 1) {
-    const startX = width * (0.2 + i * 0.25);
-    const startY = height * 0.2;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    let currentX = startX;
-    let currentY = startY;
-    for (let segment = 0; segment < 4; segment += 1) {
-      currentX += segment % 2 === 0 ? 30 : -24;
-      currentY += height * 0.15;
-      const controlX = currentX + (segment % 2 === 0 ? 12 : -12);
-      const controlY = currentY - 18;
-      ctx.quadraticCurveTo(controlX, controlY, currentX, currentY);
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
+export function getMovementDirection(node, action, island) {
+  if (!node || action.kind !== "move" || !action.to) return null;
+  const destination = island?.nodes?.[action.to];
+  if (!destination?.position || !node.position) return null;
+  const dx = destination.position.x - node.position.x;
+  const dy = destination.position.y - node.position.y;
+  return (
+    DIRECTIONS.find((direction) => {
+      const vector = DIRECTION_VECTORS[direction];
+      return vector.x === dx && vector.y === dy;
+    }) || null
+  );
 }
 
-function drawRockBiomeDetails(ctx, biome, width, height) {
-  ctx.save();
-  const baseGradient = ctx.createLinearGradient(0, 0, 0, height);
-  baseGradient.addColorStop(0, biome.rockLight || "#cbd5f5");
-  baseGradient.addColorStop(1, biome.rockDark || "#4b5563");
-  ctx.fillStyle = baseGradient;
-  ctx.fillRect(0, 0, width, height);
-
-  drawRockPlates(ctx, biome, width, height);
-  drawRockBoulders(ctx, biome, width, height);
-  drawRockCracks(ctx, biome, width, height);
-
-  ctx.restore();
-}
-
-function drawForestMist(ctx, width, height) {
-  ctx.save();
-  ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-  const bandHeight = height * 0.2;
-  for (let i = 0; i < 3; i += 1) {
-    const y = bandHeight * i + bandHeight / 2;
-    ctx.beginPath();
-    ctx.ellipse(width / 2, y, width * 0.7, bandHeight * 0.6, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawForestTrees(ctx, biome, width, height) {
-  const rows = [
-    { depth: 0.45, count: 4, scale: 0.9 },
-    { depth: 0.62, count: 6, scale: 1 },
-    { depth: 0.78, count: 7, scale: 1.2 },
-  ];
-  const trunkColor = biome.trunkColor || "#5b3716";
-  const canopyLight = biome.canopyLight || "#3a9b59";
-  const canopyDark = biome.canopyDark || "#1f6f3c";
-  rows.forEach((row, rowIndex) => {
-    const y = height * row.depth;
-    for (let i = 0; i < row.count; i += 1) {
-      const t = (i + 0.5) / row.count;
-      const noise = pseudoRandom(rowIndex * 10 + i) - 0.5;
-      const x = width * t + noise * 60;
-      const trunkHeight = 30 * row.scale;
-      const canopyRadius = 28 * row.scale;
-      ctx.save();
-      ctx.fillStyle = trunkColor;
-      ctx.fillRect(x - 5, y, 10, trunkHeight);
-      const gradient = ctx.createRadialGradient(x, y, canopyRadius * 0.3, x, y, canopyRadius);
-      gradient.addColorStop(0, canopyLight);
-      gradient.addColorStop(1, canopyDark);
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.ellipse(x, y, canopyRadius * 1.2, canopyRadius, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+/** A flat patch of scuffed ground that anchors an object to the land. */
+function groundPatch(ctx, x, y, radius, biome, seed) {
+  inkEllipse(ctx, x, y, radius, radius * 0.34, {
+    fill: mix(biome.ground || "#cbb994", PAPER, 0.3),
+    lw: 0,
+    seed,
+    rough: 1.4,
   });
 }
 
-function drawForestBiomeDetails(ctx, biome, width, height) {
-  ctx.save();
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, biome.canopyDark || "#1f6f3c");
-  gradient.addColorStop(0.5, biome.canopyLight || "#3a9b59");
-  gradient.addColorStop(1, biome.groundColor || "#0d2f20");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
+// ============================================================================
+// Coast and land
+// ============================================================================
 
-  drawForestMist(ctx, width, height);
-  drawForestTrees(ctx, biome, width, height);
-  ctx.restore();
+/**
+ * The land polygon: the frame, pulled in on every side that has no neighbour so
+ * ocean shows through. An interior node fills the frame edge to edge.
+ */
+function computeLandInsets(node, island, frame) {
+  const margin = Math.min(frame.width, frame.height) * 0.11;
+  const insets = {};
+  DIRECTIONS.forEach((direction) => {
+    insets[direction] = neighborInDirection(node, direction, island) ? -2 : margin;
+  });
+  return insets;
 }
 
-function drawPlainsPatches(ctx, biome, width, height) {
-  const patchCount = 4;
-  const colors = [biome.bloomColor || "#fcd34d", "rgba(255, 255, 255, 0.25)"];
-  for (let i = 0; i < patchCount; i += 1) {
-    const noise = pseudoRandom(200 + i);
-    const x = width * ((i + 1) / (patchCount + 1)) + (noise - 0.5) * 60;
-    const y = height * (0.4 + 0.2 * noise);
-    const rx = width * 0.18;
-    const ry = height * 0.08;
+function landPolygon(frame, insets) {
+  const left = frame.x + insets.west;
+  const right = frame.x + frame.width - insets.east;
+  const top = frame.y + insets.north;
+  const bottom = frame.y + frame.height - insets.south;
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
+}
+
+function drawFoam(ctx, direction, polygon, biome, seed, phase) {
+  const foam = biome.foam || "#fdfbf2";
+  const [topLeft, topRight, bottomRight, bottomLeft] = polygon;
+  let from;
+  let to;
+  let outward;
+  if (direction === "north") {
+    from = topLeft;
+    to = topRight;
+    outward = { x: 0, y: -1 };
+  } else if (direction === "south") {
+    from = bottomLeft;
+    to = bottomRight;
+    outward = { x: 0, y: 1 };
+  } else if (direction === "west") {
+    from = topLeft;
+    to = bottomLeft;
+    outward = { x: -1, y: 0 };
+  } else {
+    from = topRight;
+    to = bottomRight;
+    outward = { x: 1, y: 0 };
+  }
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const scallops = Math.max(4, Math.round(length / 46));
+
+  for (let band = 0; band < 2; band += 1) {
+    const offset = 7 + band * 11 + Math.sin(phase + band * 1.4) * 2.5;
+    const points = [];
+    for (let i = 0; i <= scallops * 2; i += 1) {
+      const t = i / (scallops * 2);
+      const wave = Math.sin(t * Math.PI * scallops + phase + band) * 4;
+      points.push({
+        x: from.x + dx * t + outward.x * (offset + wave),
+        y: from.y + dy * t + outward.y * (offset + wave),
+      });
+    }
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate((noise - 0.5) * 0.4);
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.globalAlpha = 0.2;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = band === 0 ? 0.95 : 0.55;
+    inkLine(ctx, points, { stroke: foam, lw: band === 0 ? 4 : 3, seed: seed + band, rough: 1 });
     ctx.restore();
   }
 }
 
-function drawPlainsBrush(ctx, biome, width, height) {
-  const strokeCount = 18;
-  ctx.save();
-  ctx.lineWidth = 6;
-  for (let i = 0; i < strokeCount; i += 1) {
-    const noise = pseudoRandom(300 + i);
-    const x = width * noise;
-    const y = height * (0.35 + 0.5 * pseudoRandom(320 + i));
-    const length = 30 + 20 * pseudoRandom(340 + i);
-    const angle = -Math.PI / 2 + (noise - 0.5) * 0.6;
-    ctx.strokeStyle = i % 2 === 0 ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.12)";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
-    ctx.stroke();
+// ============================================================================
+// Biome decor
+//
+// Each biome contributes scattered marks and objects over the flat land. All of
+// it is deterministic in the node seed, so a node looks the same every visit.
+// ============================================================================
+
+function decorSpots(seed, count, bounds, minDistanceFromCentre = 0) {
+  const spots = [];
+  let attempt = 0;
+  while (spots.length < count && attempt < count * 12) {
+    const u = noise(seed + attempt * 1.7, 3);
+    const v = noise(seed + attempt * 2.9, 11);
+    attempt += 1;
+    const x = bounds.x + u * bounds.width;
+    const y = bounds.y + v * bounds.height;
+    const cx = bounds.x + bounds.width / 2;
+    const cy = bounds.y + bounds.height / 2;
+    if (Math.hypot(x - cx, y - cy) < minDistanceFromCentre) continue;
+    spots.push({ x, y, u, v, seed: seed + attempt });
   }
-  ctx.restore();
+  return spots;
 }
 
-function drawPlainsBiomeDetails(ctx, biome, width, height) {
-  ctx.save();
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, biome.grassLight || "#b9e08b");
-  gradient.addColorStop(1, biome.grassShadow || "#7ea75c");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  drawPlainsPatches(ctx, biome, width, height);
-  drawPlainsBrush(ctx, biome, width, height);
-  ctx.restore();
+function drawTree(ctx, x, y, scale, biome, seed) {
+  const trunkWidth = 9 * scale;
+  const trunkHeight = 22 * scale;
+  groundPatch(ctx, x, y + trunkHeight * 0.55, 24 * scale, biome, seed);
+  inkShape(
+    ctx,
+    [
+      { x: x - trunkWidth / 2, y: y - trunkHeight * 0.2 },
+      { x: x + trunkWidth / 2, y: y - trunkHeight * 0.2 },
+      { x: x + trunkWidth * 0.7, y: y + trunkHeight * 0.6 },
+      { x: x - trunkWidth * 0.7, y: y + trunkHeight * 0.6 },
+    ],
+    { fill: biome.trunk || "#9c6733", lw: 3 * scale, seed, rough: 1 }
+  );
+  const radius = 30 * scale;
+  inkCircle(ctx, x, y - radius * 0.55, radius, {
+    fill: biome.canopy || "#3f9052",
+    lw: 3.4 * scale,
+    seed: seed + 5,
+    rough: 2.6,
+  });
+  inkCircle(ctx, x - radius * 0.42, y - radius * 0.95, radius * 0.6, {
+    fill: biome.canopy || "#3f9052",
+    lw: 3.4 * scale,
+    seed: seed + 9,
+    rough: 2.2,
+  });
+  inkCircle(ctx, x + radius * 0.45, y - radius * 0.85, radius * 0.52, {
+    fill: biome.canopyDeep || "#2d7140",
+    lw: 3.4 * scale,
+    seed: seed + 13,
+    rough: 2.2,
+  });
 }
 
-function drawFarmFields(ctx, biome, width, height) {
-  const rowCount = 5;
-  const colors = [biome.cropGreen || "#7cb342", biome.cropYellow || "#f5ca3a", biome.soilLight || "#c07d3a"];
-  const rowHeight = height / rowCount;
-  for (let i = 0; i < rowCount; i += 1) {
-    const y = i * rowHeight;
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.beginPath();
-    ctx.moveTo(-40, y);
-    ctx.lineTo(width + 40, y + rowHeight * 0.2);
-    ctx.lineTo(width + 40, y + rowHeight);
-    ctx.lineTo(-40, y + rowHeight * 0.8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.1)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
+function drawBoulder(ctx, x, y, scale, biome, seed) {
+  groundPatch(ctx, x, y + 14 * scale, 30 * scale, biome, seed);
+  const tint = noise(seed, 2) > 0.5 ? biome.stone : biome.stoneDeep;
+  inkShape(
+    ctx,
+    [
+      { x: x - 30 * scale, y: y + 14 * scale },
+      { x: x - 22 * scale, y: y - 14 * scale },
+      { x: x + 4 * scale, y: y - 22 * scale },
+      { x: x + 27 * scale, y: y - 6 * scale },
+      { x: x + 31 * scale, y: y + 14 * scale },
+    ],
+    { fill: tint || "#b7bdc9", lw: 3.6 * scale, seed, rough: 2.2, smooth: true }
+  );
+  inkLine(
+    ctx,
+    [
+      { x: x - 10 * scale, y: y + 12 * scale },
+      { x: x - 4 * scale, y: y - 6 * scale },
+      { x: x + 10 * scale, y: y - 14 * scale },
+    ],
+    { stroke: alpha(INK, 0.4), lw: 2.4 * scale, seed: seed + 3, rough: 1.2 }
+  );
+}
+
+function drawBloom(ctx, x, y, scale, biome, seed) {
+  const color = noise(seed, 7) > 0.5 ? biome.bloom : biome.bloomAlt;
+  inkLine(
+    ctx,
+    [
+      { x, y: y + 12 * scale },
+      { x: x + signedNoise(seed, 2) * 3, y: y - 6 * scale },
+    ],
+    { stroke: biome.detail || "#5f8f3c", lw: 2.8 * scale, seed, rough: 0.8 }
+  );
+  for (let i = 0; i < 5; i += 1) {
+    const angle = (i / 5) * Math.PI * 2;
+    inkCircle(ctx, x + Math.cos(angle) * 6 * scale, y - 8 * scale + Math.sin(angle) * 6 * scale, 4.4 * scale, {
+      fill: color || "#f5c542",
+      lw: 2 * scale,
+      seed: seed + i,
+      rough: 0.5,
+    });
   }
-  // divider lines
-  ctx.save();
-  ctx.strokeStyle = "rgba(15, 23, 42, 0.2)";
-  ctx.lineWidth = 3;
-  const columnCount = 4;
-  for (let col = 0; col <= columnCount; col += 1) {
-    const x = (width / columnCount) * col;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x - 30, height);
-    ctx.stroke();
+  inkCircle(ctx, x, y - 8 * scale, 3 * scale, { fill: PAPER, lw: 1.8 * scale, seed: seed + 21, rough: 0.4 });
+}
+
+function scatterTufts(ctx, bounds, { count, color, scale, seed }) {
+  decorSpots(seed, count, bounds).forEach((spot) => {
+    drawGrassTuft(ctx, spot.x, spot.y, scale, color, spot.seed);
+  });
+}
+
+function drawGrassTuft(ctx, x, y, scale, color, seed) {
+  for (let i = -1; i <= 1; i += 1) {
+    inkLine(
+      ctx,
+      [
+        { x, y: y + 4 * scale },
+        { x: x + i * 7 * scale, y: y - (10 + Math.abs(i) * -3) * scale },
+      ],
+      { stroke: color, lw: 2.6 * scale, seed: seed + i + 2, rough: 0.7 }
+    );
   }
-  ctx.restore();
 }
 
-function drawFarmBiomeDetails(ctx, biome, width, height) {
-  ctx.save();
-  ctx.fillStyle = biome.soilDark || "#8a5a2c";
-  ctx.fillRect(0, 0, width, height);
-  drawFarmFields(ctx, biome, width, height);
-  ctx.restore();
-}
-
-function drawBiomeBase(ctx, node, biome, width, height, getNodeIdAtPosition) {
-  if (!biome) return;
+function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
+  const inset = 46;
+  const bounds = {
+    x: land.left + inset,
+    y: land.top + inset,
+    width: Math.max(10, land.right - land.left - inset * 2),
+    height: Math.max(10, land.bottom - land.top - inset * 2),
+  };
+  const keepClear = Math.min(frame.width, frame.height) * 0.22;
+  const scale = clamp(Math.min(frame.width, frame.height) / 560, 0.62, 1.15);
 
   switch (biome.id) {
-    case "dock":
-      drawDockBiomeDetails(ctx, biome, width, height);
+    case "forest": {
+      const spots = decorSpots(seed, 14, bounds, keepClear);
+      spots
+        .sort((a, b) => a.y - b.y)
+        .forEach((spot, index) => {
+          drawTree(ctx, spot.x, spot.y, scale * (0.9 + noise(spot.seed, 4) * 0.45), biome, spot.seed + index);
+        });
+      scatterTufts(ctx, bounds, {
+        count: 12,
+        color: alpha(biome.canopyDeep || "#2d7140", 0.6),
+        scale: scale * 0.85,
+        seed: seed + 41,
+      });
       break;
-    case "sand":
-      drawSandBiomeDetails(ctx, node, biome, width, height, getNodeIdAtPosition);
+    }
+    case "rock": {
+      decorSpots(seed + 60, 5, bounds, keepClear * 0.8).forEach((spot) => {
+        inkEllipse(ctx, spot.x, spot.y, 34 * scale, 16 * scale, {
+          fill: alpha(biome.moss || "#7fa86a", 0.55),
+          lw: 0,
+          seed: spot.seed,
+          rough: 2.4,
+        });
+      });
+      decorSpots(seed, 9, bounds, keepClear).forEach((spot, index) => {
+        drawBoulder(ctx, spot.x, spot.y, scale * (0.7 + noise(spot.seed, 6) * 0.6), biome, spot.seed + index);
+      });
+      hatch(ctx, bounds, {
+        color: alpha(INK, 0.13),
+        count: 14,
+        length: 13 * scale,
+        angle: 0.1,
+        seed: seed + 17,
+      });
       break;
-    case "rock":
-      drawRockBiomeDetails(ctx, biome, width, height);
+    }
+    case "plains": {
+      decorSpots(seed, 14, bounds, keepClear * 0.7).forEach((spot, index) => {
+        if (index % 3 === 0) {
+          drawBloom(ctx, spot.x, spot.y, scale, biome, spot.seed);
+        } else {
+          drawGrassTuft(ctx, spot.x, spot.y, scale, alpha(biome.detail || "#5f8f3c", 0.75), spot.seed);
+        }
+      });
       break;
-    case "forest":
-      drawForestBiomeDetails(ctx, biome, width, height);
+    }
+    case "farm": {
+      // Furrows: flat bands of soil and crop, each one inked.
+      const rows = 5;
+      const rowHeight = (land.bottom - land.top) / rows;
+      for (let i = 0; i < rows; i += 1) {
+        const top = land.top + i * rowHeight;
+        const colour = i % 2 === 0 ? biome.soil : biome.crop;
+        inkShape(
+          ctx,
+          [
+            { x: land.left, y: top + rowHeight * 0.18 },
+            { x: land.right, y: top + rowHeight * 0.1 },
+            { x: land.right, y: top + rowHeight * 0.62 },
+            { x: land.left, y: top + rowHeight * 0.7 },
+          ],
+          { fill: colour, lw: 2.6, seed: seed + i * 3, rough: 1.6 }
+        );
+        if (i % 2 === 1) {
+          for (let c = 0; c < 7; c += 1) {
+            const x = land.left + ((c + 0.5) / 7) * (land.right - land.left);
+            const y = top + rowHeight * 0.34;
+            inkCircle(ctx, x, y, 5 * scale, {
+              fill: biome.cropRipe || "#f0c64a",
+              lw: 2 * scale,
+              seed: seed + i * 11 + c,
+              rough: 0.6,
+            });
+          }
+        }
+      }
       break;
-    case "plains":
-      drawPlainsBiomeDetails(ctx, biome, width, height);
+    }
+    case "sand": {
+      stipple(ctx, bounds, {
+        color: alpha(biome.detail || "#c79a4e", 0.4),
+        count: 140,
+        radius: 2.1,
+        seed: seed + 5,
+      });
+      decorSpots(seed + 3, 8, bounds, keepClear * 0.75).forEach((spot) => {
+        // Ripples in the sand: flat dashes, never a shadow.
+        const span = (30 + noise(spot.seed, 8) * 26) * scale;
+        inkLine(
+          ctx,
+          [
+            { x: spot.x - span, y: spot.y },
+            { x: spot.x, y: spot.y - 6 * scale },
+            { x: spot.x + span, y: spot.y },
+          ],
+          { stroke: alpha(biome.detail || "#c79a4e", 0.6), lw: 3 * scale, seed: spot.seed, rough: 1 }
+        );
+      });
+      scatterTufts(ctx, bounds, {
+        count: 6,
+        color: alpha("#8faa55", 0.85),
+        scale: scale * 0.9,
+        seed: seed + 91,
+      });
       break;
-    case "farm":
-      drawFarmBiomeDetails(ctx, biome, width, height);
-      break;
+    }
     default:
       break;
   }
 }
 
-export function drawBiomeBackground(ctx, width, height, node, biome, getNodeIdAtPosition) {
-  drawBiomeBase(ctx, node, biome, width, height, getNodeIdAtPosition);
+// ============================================================================
+// The dock — the island's front door, and the only scene with a horizon
+// ============================================================================
+
+function drawDockScene(ctx, frame, biome, seed) {
+  const { x, y, width, height } = frame;
+  const shoreBottom = y + height * 0.36;
+  const sandBottom = y + height * 0.58;
+
+  ctx.fillStyle = biome.water;
+  ctx.fillRect(x, y, width, height);
+
+  inkShape(
+    ctx,
+    [
+      { x: x - 4, y: y - 4 },
+      { x: x + width + 4, y: y - 4 },
+      { x: x + width + 4, y: shoreBottom },
+      { x: x - 4, y: shoreBottom },
+    ],
+    { fill: biome.ground, lw: 0, seed, rough: 2 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: x - 4, y: shoreBottom - 6 },
+      { x: x + width + 4, y: shoreBottom - 6 },
+      { x: x + width + 4, y: sandBottom },
+      { x: x - 4, y: sandBottom },
+    ],
+    { fill: biome.sand, lw: 0, seed: seed + 1, rough: 2.4 }
+  );
+
+  scatterTufts(ctx, { x: x + 20, y: y + 16, width: width - 40, height: shoreBottom - y - 40 }, {
+    count: 12,
+    color: alpha(biome.detail, 0.5),
+    scale: 0.85,
+    seed: seed + 9,
+  });
+  stipple(ctx, { x, y: shoreBottom - 4, width, height: sandBottom - shoreBottom + 4 }, {
+    color: alpha("#c79a4e", 0.4),
+    count: 40,
+    radius: 2,
+    seed: seed + 13,
+  });
+
+  // The pier, running down the middle into the water.
+  const pierWidth = Math.max(86, width * 0.19);
+  const pierTop = sandBottom - 10;
+  const pierBottom = y + height - 6;
+  const centreX = x + width / 2;
+  inkShape(
+    ctx,
+    [
+      { x: centreX - pierWidth * 0.4, y: pierTop },
+      { x: centreX + pierWidth * 0.4, y: pierTop },
+      { x: centreX + pierWidth * 0.62, y: pierBottom },
+      { x: centreX - pierWidth * 0.62, y: pierBottom },
+    ],
+    { fill: biome.wood, lw: 4, seed: seed + 21, rough: 1.6 }
+  );
+  const plankCount = 6;
+  for (let i = 1; i < plankCount; i += 1) {
+    const t = i / plankCount;
+    const halfWidth = lerp(pierWidth * 0.4, pierWidth * 0.62, t);
+    const py = lerp(pierTop, pierBottom, t);
+    inkLine(
+      ctx,
+      [
+        { x: centreX - halfWidth, y: py },
+        { x: centreX + halfWidth, y: py },
+      ],
+      { stroke: alpha(biome.woodDeep, 0.8), lw: 3, seed: seed + 30 + i, rough: 0.8 }
+    );
+  }
 }
 
 // ============================================================================
-// Path Drawing
+// Paths
 // ============================================================================
 
-function buildPathOutline(movementEntries, width, height, centerX, centerY, thickness, frameInset) {
+function pathThickness(frame) {
+  return clamp(Math.min(frame.width, frame.height) * 0.14, 48, 108);
+}
+
+function buildPathOutline(directions, frame, thickness) {
+  const centre = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
   const half = thickness / 2;
-  const hasDirection = (direction) => movementEntries.some((entry) => entry.direction === direction);
+  const has = (direction) => directions.includes(direction);
 
-  const northExtent = hasDirection("north") ? frameInset : centerY - half;
-  const southExtent = hasDirection("south") ? height - frameInset : centerY + half;
-  const westExtent = hasDirection("west") ? frameInset : centerX - half;
-  const eastExtent = hasDirection("east") ? width - frameInset : centerX + half;
+  const north = frame.y - 4;
+  const south = frame.y + frame.height + 4;
+  const west = frame.x - 4;
+  const east = frame.x + frame.width + 4;
 
-  const innerTopLeft = { x: centerX - half, y: centerY - half };
-  const innerTopRight = { x: centerX + half, y: centerY - half };
-  const innerBottomRight = { x: centerX + half, y: centerY + half };
-  const innerBottomLeft = { x: centerX - half, y: centerY + half };
+  const topLeft = { x: centre.x - half, y: centre.y - half };
+  const topRight = { x: centre.x + half, y: centre.y - half };
+  const bottomRight = { x: centre.x + half, y: centre.y + half };
+  const bottomLeft = { x: centre.x - half, y: centre.y + half };
 
-  const outline = [innerTopLeft];
-
-  if (hasDirection("north")) {
-    outline.push({ x: innerTopLeft.x, y: northExtent });
-    outline.push({ x: innerTopRight.x, y: northExtent });
-    outline.push({ x: innerTopRight.x, y: innerTopRight.y });
+  const outline = [topLeft];
+  if (has("north")) {
+    outline.push({ x: topLeft.x, y: north }, { x: topRight.x, y: north }, topRight);
   } else {
-    outline.push(innerTopRight);
+    outline.push(topRight);
   }
-
-  if (hasDirection("east")) {
-    outline.push({ x: eastExtent, y: innerTopRight.y });
-    outline.push({ x: eastExtent, y: innerBottomRight.y });
-    outline.push({ x: innerBottomRight.x, y: innerBottomRight.y });
+  if (has("east")) {
+    outline.push({ x: east, y: topRight.y }, { x: east, y: bottomRight.y }, bottomRight);
   } else {
-    outline.push(innerBottomRight);
+    outline.push(bottomRight);
   }
-
-  if (hasDirection("south")) {
-    outline.push({ x: innerBottomRight.x, y: southExtent });
-    outline.push({ x: innerBottomLeft.x, y: southExtent });
-    outline.push({ x: innerBottomLeft.x, y: innerBottomLeft.y });
+  if (has("south")) {
+    outline.push({ x: bottomRight.x, y: south }, { x: bottomLeft.x, y: south }, bottomLeft);
   } else {
-    outline.push(innerBottomLeft);
+    outline.push(bottomLeft);
   }
-
-  if (hasDirection("west")) {
-    outline.push({ x: westExtent, y: innerBottomLeft.y });
-    outline.push({ x: westExtent, y: innerTopLeft.y });
-    outline.push({ x: innerTopLeft.x, y: innerTopLeft.y });
-  } else {
-    outline.push(innerTopLeft);
+  if (has("west")) {
+    outline.push({ x: west, y: bottomLeft.y }, { x: west, y: topLeft.y });
   }
-
   return outline;
 }
 
-export function drawBiomePaths(ctx, node, movementEntries, width, height, biome) {
-  if (!node || movementEntries.length === 0) return;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const pathThickness = Math.min(PATH_THICKNESS, width * 0.08);
-  const fillColor = biome?.pathColor || "rgba(15, 23, 42, 0.35)";
-  const outlineColor = biome?.pathOutline || "rgba(15, 23, 42, 0.55)";
-  const frameInset = SCENE_FRAME_LINE_WIDTH;
+function drawPaths(ctx, directions, frame, biome, seed) {
+  if (!directions.length) return;
+  const thickness = pathThickness(frame);
+  const outline = buildPathOutline(directions, frame, thickness);
+  const trail = mix(PAPER_DEEP, biome.ground || "#cbb994", 0.18);
+  inkShape(ctx, outline, {
+    fill: trail,
+    stroke: alpha(INK, 0.7),
+    lw: 3.5,
+    seed: seed + 77,
+    rough: 2.2,
+  });
 
-  const outline = buildPathOutline(movementEntries, width, height, centerX, centerY, pathThickness, frameInset);
-  if (!outline.length) return;
-
-  ctx.save();
-  ctx.fillStyle = fillColor;
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = Math.max(3, Math.round(pathThickness * 0.18));
-  ctx.beginPath();
-  outline.forEach((point, index) => {
-    if (index === 0) {
-      ctx.moveTo(point.x, point.y);
-    } else {
-      ctx.lineTo(point.x, point.y);
+  // Stepping dots down the middle of each arm, so direction reads at a glance.
+  const centre = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+  directions.forEach((direction, armIndex) => {
+    const vector = DIRECTION_VECTORS[direction];
+    const reach =
+      direction === "north" || direction === "south" ? frame.height / 2 : frame.width / 2;
+    const steps = Math.max(2, Math.round(reach / 52));
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / (steps + 0.4);
+      const px = centre.x + vector.x * reach * t;
+      const py = centre.y + vector.y * reach * t;
+      inkCircle(ctx, px, py, 4.6, {
+        fill: alpha(INK, 0.2),
+        lw: 0,
+        seed: seed + armIndex * 13 + i,
+        rough: 0.5,
+      });
     }
   });
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
 }
 
 // ============================================================================
-// Adjacency Arc Drawing
+// Adjacency hints
+//
+// visual-v1: "flat shapes using the adjacent node's dominant colour, limited to
+// a small area near the path". Drawn as a doorway in the frame edge, so the
+// neighbouring land reads as literally showing through the opening.
 // ============================================================================
 
-function normalizeAngle(angle) {
-  const twoPi = Math.PI * 2;
-  let normalized = angle % twoPi;
-  if (normalized < 0) normalized += twoPi;
-  return normalized;
-}
-
-function getArcMidpoint(cx, cy, radius, startAngle, endAngle, anticlockwise) {
-  const twoPi = Math.PI * 2;
-  let delta = endAngle - startAngle;
-  if (anticlockwise) {
-    if (delta < 0) delta += twoPi;
-  } else {
-    if (delta > 0) delta -= twoPi;
-  }
-  const midAngle = startAngle + delta / 2;
-  return {
-    x: cx + Math.cos(midAngle) * radius,
-    y: cy + Math.sin(midAngle) * radius,
-  };
-}
-
-function isMidpointInside(direction, point, centerX, centerY) {
-  switch (direction) {
-    case "north":
-      return point.y >= centerY;
-    case "south":
-      return point.y <= centerY;
-    case "west":
-      return point.x >= centerX;
-    case "east":
-      return point.x <= centerX;
-    default:
-      return true;
-  }
-}
-
-function getArcGeometry(direction, centerX, centerY, width, height, radius, chordHalf, inset) {
-  const edgeTop = inset;
-  const edgeBottom = height - inset;
-  const edgeLeft = inset;
-  const edgeRight = width - inset;
-
-  let chordA = null;
-  let chordB = null;
-  let arcCenterX = centerX;
-  let arcCenterY = centerY;
+function drawAdjacencyHint(ctx, direction, frame, neighborColor, seed) {
+  const thickness = pathThickness(frame);
+  const half = thickness / 2 + 3;
+  const depth = 30;
+  const centre = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+  const over = 24;
+  let points;
 
   if (direction === "north") {
-    chordA = { x: centerX - chordHalf, y: edgeTop };
-    chordB = { x: centerX + chordHalf, y: edgeTop };
-    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
-    arcCenterX = centerX;
-    arcCenterY = edgeTop - offset;
+    const edge = frame.y;
+    points = [
+      { x: centre.x - half, y: edge - over },
+      { x: centre.x + half, y: edge - over },
+      { x: centre.x + half, y: edge + depth },
+      { x: centre.x - half, y: edge + depth },
+    ];
   } else if (direction === "south") {
-    chordA = { x: centerX + chordHalf, y: edgeBottom };
-    chordB = { x: centerX - chordHalf, y: edgeBottom };
-    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
-    arcCenterX = centerX;
-    arcCenterY = edgeBottom + offset;
+    const edge = frame.y + frame.height;
+    points = [
+      { x: centre.x - half, y: edge - depth },
+      { x: centre.x + half, y: edge - depth },
+      { x: centre.x + half, y: edge + over },
+      { x: centre.x - half, y: edge + over },
+    ];
   } else if (direction === "west") {
-    chordA = { x: edgeLeft, y: centerY + chordHalf };
-    chordB = { x: edgeLeft, y: centerY - chordHalf };
-    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
-    arcCenterX = edgeLeft - offset;
-    arcCenterY = centerY;
-  } else if (direction === "east") {
-    chordA = { x: edgeRight, y: centerY - chordHalf };
-    chordB = { x: edgeRight, y: centerY + chordHalf };
-    const offset = Math.sqrt(Math.max(0, radius * radius - chordHalf * chordHalf));
-    arcCenterX = edgeRight + offset;
-    arcCenterY = centerY;
+    const edge = frame.x;
+    points = [
+      { x: edge - over, y: centre.y - half },
+      { x: edge + depth, y: centre.y - half },
+      { x: edge + depth, y: centre.y + half },
+      { x: edge - over, y: centre.y + half },
+    ];
   } else {
-    return null;
+    const edge = frame.x + frame.width;
+    points = [
+      { x: edge - depth, y: centre.y - half },
+      { x: edge + over, y: centre.y - half },
+      { x: edge + over, y: centre.y + half },
+      { x: edge - depth, y: centre.y + half },
+    ];
   }
 
-  const angleA = normalizeAngle(Math.atan2(chordA.y - arcCenterY, chordA.x - arcCenterX));
-  const angleB = normalizeAngle(Math.atan2(chordB.y - arcCenterY, chordB.x - arcCenterX));
-
-  const clockwiseMid = getArcMidpoint(arcCenterX, arcCenterY, radius, angleA, angleB, false);
-  const counterMid = getArcMidpoint(arcCenterX, arcCenterY, radius, angleA, angleB, true);
-
-  const clockwiseInside = isMidpointInside(direction, clockwiseMid, centerX, centerY);
-  const counterInside = isMidpointInside(direction, counterMid, centerX, centerY);
-
-  const anticlockwise = counterInside && !clockwiseInside;
-
-  return {
-    chordA,
-    chordB,
-    arcCenterX,
-    arcCenterY,
-    startAngle: angleA,
-    endAngle: angleB,
-    anticlockwise,
-  };
-}
-
-function drawAdjacencyArc(ctx, direction, color, outlineColor, width, height, pathThickness) {
-  const outlineWidth = Math.max(3, Math.round(pathThickness * 0.18));
-  const chordHalf = pathThickness / 2;
-  const inset = SCENE_FRAME_LINE_WIDTH + outlineWidth;
-  const sceneCenterX = width / 2;
-  const sceneCenterY = height / 2;
-  const radius = Math.max(90, pathThickness * 1.8);
-
-  const geometry = getArcGeometry(
-    direction,
-    sceneCenterX,
-    sceneCenterY,
-    width,
-    height,
-    radius,
-    chordHalf,
-    inset
-  );
-  if (!geometry) return;
-
-  const { chordA, arcCenterX, arcCenterY, startAngle, endAngle, anticlockwise } = geometry;
-
-  ctx.beginPath();
-  ctx.moveTo(chordA.x, chordA.y);
-  ctx.arc(arcCenterX, arcCenterY, radius, startAngle, endAngle, anticlockwise);
-  ctx.lineTo(chordA.x, chordA.y);
-  ctx.closePath();
-
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = outlineColor;
-  ctx.lineWidth = outlineWidth;
-  ctx.beginPath();
-  ctx.arc(arcCenterX, arcCenterY, radius, 0, Math.PI * 2);
-  ctx.stroke();
-}
-
-export function drawAdjacencyHint(ctx, node, direction, width, height, biome, island) {
-  if (!node || !node.position || !island) return;
-  const neighborId = getNeighborIdForDirection(node, direction, (x, y) => {
-    return (
-      Object.values(island.nodes).find(
-        (n) => n.position?.x === x && n.position?.y === y
-      )?.id || null
-    );
+  inkShape(ctx, points, {
+    fill: neighborColor,
+    stroke: alpha(INK, 0.6),
+    lw: 3,
+    seed,
+    rough: 1.8,
   });
-  if (!neighborId) return;
-  const neighbor = island.nodes[neighborId];
-  if (!neighbor) return;
-  const color = resolveNodeColor(neighbor);
-  const pathThickness = Math.min(PATH_THICKNESS, width * 0.08);
-  const outlineColor = biome?.pathOutline || "rgba(15, 23, 42, 0.55)";
+}
+
+// ============================================================================
+// Features
+// ============================================================================
+
+function drawGemFeature(ctx, feature, twinkle) {
+  const { slot, color } = feature;
+  const { x, y } = slot;
+  const size = 24;
+  const body = color?.fill ?? "#e8615a";
+  const facet = color?.stroke ?? mix(body, PAPER, 0.45);
+  const seed = feature.seed;
+
+  groundPatch(ctx, x, y + size * 0.9, size * 1.2, feature.biome, seed);
+  inkShape(
+    ctx,
+    [
+      { x, y: y - size },
+      { x: x + size * 0.85, y: y - size * 0.2 },
+      { x, y: y + size },
+      { x: x - size * 0.85, y: y - size * 0.2 },
+    ],
+    { fill: body, lw: 4, seed, rough: 0.8 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x, y: y - size },
+      { x: x + size * 0.85, y: y - size * 0.2 },
+      { x, y: y - size * 0.05 },
+    ],
+    { fill: facet, lw: 2.6, seed: seed + 3, rough: 0.6 }
+  );
+
+  const sparkle = 0.55 + Math.sin(twinkle * 2.4 + seed) * 0.45;
   ctx.save();
-  drawAdjacencyArc(ctx, direction, color, outlineColor, width, height, pathThickness);
+  ctx.globalAlpha = sparkle;
+  inkStar(ctx, x + size * 0.75, y - size * 0.95, 8 * (0.7 + sparkle * 0.5), {
+    points: 4,
+    inner: 2.2,
+    fill: PAPER,
+    lw: 2,
+    seed: seed + 7,
+  });
   ctx.restore();
 }
 
-// ============================================================================
-// Layout Functions
-// ============================================================================
+function drawShellFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  const radius = 22;
+  groundPatch(ctx, x, y + radius * 0.7, radius * 1.3, feature.biome, seed);
+  const points = [{ x: x - radius, y: y + radius * 0.5 }];
+  for (let i = 0; i <= 10; i += 1) {
+    const angle = Math.PI + (i / 10) * Math.PI;
+    points.push({
+      x: x + Math.cos(angle) * radius,
+      y: y + radius * 0.5 + Math.sin(angle) * radius,
+    });
+  }
+  inkShape(ctx, points, { fill: "#f6d9b0", lw: 3.6, seed, rough: 0.9 });
+  for (let i = -2; i <= 2; i += 1) {
+    inkLine(
+      ctx,
+      [
+        { x: x + i * 5, y: y + radius * 0.45 },
+        { x: x + i * 8.5, y: y - radius * 0.5 },
+      ],
+      { stroke: alpha("#b4793a", 0.7), lw: 2.2, seed: seed + i + 5, rough: 0.5 }
+    );
+  }
+}
 
-function getFeatureSlots(width, height) {
-  const center = { x: width / 2, y: height / 2 };
-  const insetX = Math.min(220, width * 0.3);
-  const insetY = Math.min(190, height * 0.27);
-  const corners = [
-    { id: "southwest", x: center.x - insetX, y: center.y + insetY },
-    { id: "northeast", x: center.x + insetX, y: center.y - insetY },
-    { id: "northwest", x: center.x - insetX, y: center.y - insetY },
-    { id: "southeast", x: center.x + insetX, y: center.y + insetY },
+function drawPebbleFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 12, 26, feature.biome, seed);
+  inkEllipse(ctx, x, y, 21, 15, { fill: "#c3cad6", lw: 3.6, seed, rough: 1.4 });
+  inkEllipse(ctx, x - 6, y - 4, 7, 4, { fill: "#dde3eb", lw: 0, seed: seed + 2, rough: 0.6 });
+}
+
+function drawPineconeFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 20, 24, feature.biome, seed);
+  inkEllipse(ctx, x, y, 15, 22, { fill: "#a9702f", lw: 3.4, seed, rough: 1 });
+  for (let row = -2; row <= 2; row += 1) {
+    inkLine(
+      ctx,
+      [
+        { x: x - 11, y: y + row * 7 + 2 },
+        { x, y: y + row * 7 - 2 },
+        { x: x + 11, y: y + row * 7 + 2 },
+      ],
+      { stroke: alpha("#5d3a14", 0.75), lw: 2.2, seed: seed + row + 4, rough: 0.5 }
+    );
+  }
+}
+
+function drawWildflowerFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 22, 24, feature.biome, seed);
+  inkLine(
+    ctx,
+    [
+      { x, y: y + 22 },
+      { x, y: y - 6 },
+    ],
+    { stroke: "#4c8b34", lw: 3.4, seed, rough: 0.8 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: x + 2, y: y + 8 },
+      { x: x + 15, y: y + 2 },
+      { x: x + 4, y: y + 15 },
+    ],
+    { fill: "#4c8b34", lw: 2.4, seed: seed + 1, rough: 0.6 }
+  );
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    inkEllipse(ctx, x + Math.cos(angle) * 11, y - 10 + Math.sin(angle) * 11, 7.5, 6, {
+      fill: "#f2a516",
+      lw: 2.4,
+      rotation: angle,
+      seed: seed + i + 2,
+      rough: 0.5,
+    });
+  }
+  inkCircle(ctx, x, y - 10, 6, { fill: "#f6e3c4", lw: 2.4, seed: seed + 11, rough: 0.5 });
+}
+
+function drawCarrotFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 20, 26, feature.biome, seed);
+  inkShape(
+    ctx,
+    [
+      { x: x - 13, y: y - 8 },
+      { x: x + 13, y: y - 8 },
+      { x, y: y + 26 },
+    ],
+    { fill: "#ef8135", lw: 3.6, seed, rough: 0.9 }
+  );
+  for (let i = -1; i <= 1; i += 1) {
+    inkLine(
+      ctx,
+      [
+        { x: x + i * 6, y: y - 2 },
+        { x: x + i * 9, y: y + 4 },
+      ],
+      { stroke: alpha("#b8501a", 0.8), lw: 2, seed: seed + i + 3, rough: 0.4 }
+    );
+  }
+  [-1, 0, 1].forEach((i) => {
+    inkLine(
+      ctx,
+      [
+        { x, y: y - 8 },
+        { x: x + i * 11, y: y - 26 },
+      ],
+      { stroke: "#4c8b34", lw: 3.4, seed: seed + i + 7, rough: 0.8 }
+    );
+  });
+}
+
+function paintSign(ctx, feature, boardColor, postColor) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 40, 30, feature.biome, seed);
+  inkShape(
+    ctx,
+    [
+      { x: x - 6, y: y - 4 },
+      { x: x + 6, y: y - 4 },
+      { x: x + 5, y: y + 42 },
+      { x: x - 5, y: y + 42 },
+    ],
+    { fill: postColor, lw: 3.2, seed, rough: 0.8 }
+  );
+  inkRect(ctx, x - 40, y - 34, 80, 40, {
+    fill: boardColor,
+    lw: 4,
+    radius: 7,
+    seed: seed + 2,
+    rough: 1.2,
+  });
+  [0, 1, 2].forEach((row) => {
+    const width = row === 2 ? 34 : 52;
+    inkLine(
+      ctx,
+      [
+        { x: x - width / 2, y: y - 24 + row * 10 },
+        { x: x + width / 2, y: y - 24 + row * 10 },
+      ],
+      { stroke: alpha(INK, 0.5), lw: 2.6, seed: seed + row + 4, rough: 0.5 }
+    );
+  });
+}
+
+function drawSignFeature(ctx, feature) {
+  paintSign(ctx, feature, "#f2d79c", "#a9702f");
+}
+
+function drawCaveSignFeature(ctx, feature) {
+  paintSign(ctx, feature, "#d6cbb4", "#7b6a51");
+}
+
+function drawPersonFeature(ctx, feature, time) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  const palettes = [
+    { shirt: "#5bb0d6", hat: "#e8615a", skin: "#f0cba6" },
+    { shirt: "#f2a516", hat: "#3f9052", skin: "#c98d52" },
+    { shirt: "#b78ad6", hat: "#5bb0d6", skin: "#f3d7b8" },
+    { shirt: "#7fbf6a", hat: "#f2d79c", skin: "#8a5f3c" },
   ];
-  corners.push({ id: "center-low", x: center.x, y: center.y + insetY * 0.65 });
-  return corners;
+  const palette = palettes[seed % palettes.length];
+  const bob = Math.sin(time * 1.6 + seed) * 2;
+
+  groundPatch(ctx, x, y + 44, 30, feature.biome, seed);
+  ctx.save();
+  ctx.translate(0, bob);
+
+  // legs
+  inkShape(ctx, [{ x: x - 11, y: y + 18 }, { x: x - 3, y: y + 18 }, { x: x - 3, y: y + 44 }, { x: x - 11, y: y + 44 }], {
+    fill: "#4a6a8a",
+    lw: 3,
+    seed: seed + 1,
+    rough: 0.6,
+  });
+  inkShape(ctx, [{ x: x + 3, y: y + 18 }, { x: x + 11, y: y + 18 }, { x: x + 11, y: y + 44 }, { x: x + 3, y: y + 44 }], {
+    fill: "#4a6a8a",
+    lw: 3,
+    seed: seed + 2,
+    rough: 0.6,
+  });
+  // body
+  inkRect(ctx, x - 17, y - 8, 34, 30, { fill: palette.shirt, lw: 3.6, radius: 9, seed: seed + 3, rough: 0.9 });
+  // arms
+  inkRect(ctx, x - 25, y - 4, 9, 22, { fill: palette.skin, lw: 3, radius: 4.5, seed: seed + 4, rough: 0.6 });
+  inkRect(ctx, x + 16, y - 4, 9, 22, { fill: palette.skin, lw: 3, radius: 4.5, seed: seed + 5, rough: 0.6 });
+  // head
+  inkCircle(ctx, x, y - 24, 16, { fill: palette.skin, lw: 3.6, seed: seed + 6, rough: 0.8 });
+  // hat
+  inkShape(
+    ctx,
+    [
+      { x: x - 24, y: y - 32 },
+      { x: x + 24, y: y - 32 },
+      { x: x + 14, y: y - 38 },
+      { x: x - 14, y: y - 38 },
+    ],
+    { fill: palette.hat, lw: 3.2, seed: seed + 7, rough: 0.7 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: x - 13, y: y - 38 },
+      { x: x + 13, y: y - 38 },
+      { x: x + 10, y: y - 50 },
+      { x: x - 10, y: y - 50 },
+    ],
+    { fill: palette.hat, lw: 3.2, seed: seed + 8, rough: 0.7 }
+  );
+  // face
+  ctx.fillStyle = INK;
+  ctx.beginPath();
+  ctx.arc(x - 6, y - 26, 2.3, 0, Math.PI * 2);
+  ctx.arc(x + 6, y - 26, 2.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y - 21, 6, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
 }
 
-function getShipSlot(width, height) {
-  return {
-    id: "ship-dock",
-    x: width * 0.35,
-    y: Math.min(height - 80, height * 0.6),
-  };
+function drawShipFeature(ctx, feature, time) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  const rock = Math.sin(time * 1.1 + seed) * 0.035;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rock);
+
+  inkShape(
+    ctx,
+    [
+      { x: -62, y: -6 },
+      { x: 62, y: -6 },
+      { x: 44, y: 34 },
+      { x: -44, y: 34 },
+    ],
+    { fill: "#c9603f", lw: 4.5, seed, rough: 1.2 }
+  );
+  inkLine(
+    ctx,
+    [
+      { x: -56, y: 6 },
+      { x: 56, y: 6 },
+    ],
+    { stroke: alpha(INK, 0.55), lw: 3, seed: seed + 1, rough: 0.8 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: -4, y: -8 },
+      { x: 4, y: -8 },
+      { x: 4, y: -78 },
+      { x: -4, y: -78 },
+    ],
+    { fill: "#a9702f", lw: 3.2, seed: seed + 2, rough: 0.6 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: 6, y: -74 },
+      { x: 52, y: -44 },
+      { x: 6, y: -16 },
+    ],
+    { fill: PAPER, lw: 4, seed: seed + 3, rough: 1.2 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: -6, y: -70 },
+      { x: -40, y: -46 },
+      { x: -6, y: -22 },
+    ],
+    { fill: "#f2d79c", lw: 4, seed: seed + 4, rough: 1.2 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: -4, y: -86 },
+      { x: 26, y: -80 },
+      { x: -4, y: -74 },
+    ],
+    { fill: "#e8615a", lw: 2.6, seed: seed + 5, rough: 0.6 }
+  );
+  ctx.restore();
 }
 
-function allocateFeatureSlots(features, slotsById) {
+function drawSandcastleFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 26, 40, feature.biome, seed);
+  inkRect(ctx, x - 26, y - 2, 52, 28, { fill: "#edc784", lw: 3.6, radius: 4, seed, rough: 1 });
+  [-1, 1].forEach((side) => {
+    inkRect(ctx, x + side * 26 - 11, y - 20, 22, 46, {
+      fill: "#f2d79c",
+      lw: 3.6,
+      radius: 4,
+      seed: seed + side + 3,
+      rough: 1,
+    });
+  });
+  inkLine(
+    ctx,
+    [
+      { x, y: y - 2 },
+      { x, y: y - 26 },
+    ],
+    { stroke: "#a9702f", lw: 3, seed: seed + 6, rough: 0.6 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: x + 2, y: y - 26 },
+      { x: x + 22, y: y - 20 },
+      { x: x + 2, y: y - 14 },
+    ],
+    { fill: "#e8615a", lw: 2.6, seed: seed + 7, rough: 0.5 }
+  );
+}
+
+function drawOwlFeature(ctx, feature, time) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  // Blinks roughly every four seconds.
+  const blink = Math.sin(time * 0.8 + seed) > 0.97;
+  groundPatch(ctx, x, y + 28, 28, feature.biome, seed);
+  inkEllipse(ctx, x, y, 24, 30, { fill: "#b07d44", lw: 4, seed, rough: 1.2 });
+  inkShape(
+    ctx,
+    [
+      { x: x - 17, y: y - 20 },
+      { x: x - 5, y: y - 30 },
+      { x: x - 3, y: y - 16 },
+    ],
+    { fill: "#b07d44", lw: 3.2, seed: seed + 1, rough: 0.6 }
+  );
+  inkShape(
+    ctx,
+    [
+      { x: x + 17, y: y - 20 },
+      { x: x + 5, y: y - 30 },
+      { x: x + 3, y: y - 16 },
+    ],
+    { fill: "#b07d44", lw: 3.2, seed: seed + 2, rough: 0.6 }
+  );
+  inkCircle(ctx, x - 9, y - 8, 10, { fill: PAPER, lw: 3, seed: seed + 3, rough: 0.6 });
+  inkCircle(ctx, x + 9, y - 8, 10, { fill: PAPER, lw: 3, seed: seed + 4, rough: 0.6 });
+  if (!blink) {
+    ctx.fillStyle = INK;
+    ctx.beginPath();
+    ctx.arc(x - 9, y - 8, 4, 0, Math.PI * 2);
+    ctx.arc(x + 9, y - 8, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  inkShape(
+    ctx,
+    [
+      { x: x - 4, y: y + 1 },
+      { x: x + 4, y: y + 1 },
+      { x, y: y + 9 },
+    ],
+    { fill: "#f2a516", lw: 2.4, seed: seed + 5, rough: 0.4 }
+  );
+}
+
+function drawKiteFeature(ctx, feature, time) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  const sway = Math.sin(time * 1.3 + seed) * 6;
+  ctx.save();
+  ctx.translate(sway, Math.cos(time * 1.1 + seed) * 4);
+  inkShape(
+    ctx,
+    [
+      { x, y: y - 30 },
+      { x: x + 24, y },
+      { x, y: y + 30 },
+      { x: x - 24, y },
+    ],
+    { fill: "#5bb0d6", lw: 4, seed, rough: 0.8 }
+  );
+  inkLine(
+    ctx,
+    [
+      { x, y: y - 30 },
+      { x, y: y + 30 },
+    ],
+    { stroke: alpha(INK, 0.5), lw: 2.4, seed: seed + 1, rough: 0.4 }
+  );
+  inkLine(
+    ctx,
+    [
+      { x: x - 24, y },
+      { x: x + 24, y },
+    ],
+    { stroke: alpha(INK, 0.5), lw: 2.4, seed: seed + 2, rough: 0.4 }
+  );
+  const tail = [];
+  for (let i = 0; i <= 5; i += 1) {
+    tail.push({ x: x + Math.sin(time * 2 + i * 0.8) * i * 2.4, y: y + 30 + i * 9 });
+  }
+  inkLine(ctx, tail, { stroke: INK, lw: 2.4, seed: seed + 3, rough: 0.4 });
+  [1, 3, 5].forEach((i) => {
+    inkShape(
+      ctx,
+      [
+        { x: tail[i].x - 7, y: tail[i].y - 4 },
+        { x: tail[i].x + 7, y: tail[i].y },
+        { x: tail[i].x - 7, y: tail[i].y + 4 },
+      ],
+      { fill: "#e8615a", lw: 2, seed: seed + i + 6, rough: 0.3 }
+    );
+  });
+  ctx.restore();
+}
+
+function drawTractorFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  const seed = feature.seed;
+  groundPatch(ctx, x, y + 30, 48, feature.biome, seed);
+  inkRect(ctx, x - 32, y - 6, 62, 26, { fill: "#3f9052", lw: 4, radius: 6, seed, rough: 1 });
+  inkRect(ctx, x - 8, y - 28, 30, 24, { fill: "#4faa62", lw: 3.6, radius: 5, seed: seed + 1, rough: 0.8 });
+  inkRect(ctx, x - 3, y - 24, 18, 14, { fill: "#bfe0ea", lw: 2.6, radius: 3, seed: seed + 2, rough: 0.6 });
+  inkCircle(ctx, x - 19, y + 22, 13, { fill: "#4a4038", lw: 3.6, seed: seed + 3, rough: 0.7 });
+  inkCircle(ctx, x - 19, y + 22, 5, { fill: "#f2d79c", lw: 2.4, seed: seed + 4, rough: 0.4 });
+  inkCircle(ctx, x + 21, y + 18, 18, { fill: "#4a4038", lw: 3.6, seed: seed + 5, rough: 0.8 });
+  inkCircle(ctx, x + 21, y + 18, 7, { fill: "#f2d79c", lw: 2.4, seed: seed + 6, rough: 0.4 });
+}
+
+function drawPlaceholderFeature(ctx, feature) {
+  const { x, y } = feature.slot;
+  inkCircle(ctx, x, y, 20, { fill: PAPER_DEEP, lw: 3.4, seed: feature.seed, rough: 1.2 });
+  inkText(ctx, "?", x, y + 1, { size: 22, color: INK });
+}
+
+const FEATURE_PAINTERS = {
+  ship: drawShipFeature,
+  gem: drawGemFeature,
+  shell: drawShellFeature,
+  pebble: drawPebbleFeature,
+  pinecone: drawPineconeFeature,
+  wildflower: drawWildflowerFeature,
+  carrot: drawCarrotFeature,
+  sign: drawSignFeature,
+  cave_sign: drawCaveSignFeature,
+  person: drawPersonFeature,
+  sandcastle: drawSandcastleFeature,
+  owl: drawOwlFeature,
+  kite: drawKiteFeature,
+  tractor: drawTractorFeature,
+};
+
+export function drawFeatures(ctx, features, time) {
+  features
+    .slice()
+    .sort((a, b) => a.slot.y - b.slot.y)
+    .forEach((feature) => {
+      const painter = FEATURE_PAINTERS[feature.type] || drawPlaceholderFeature;
+      const scale = feature.scale ?? 1;
+      ctx.save();
+      // Scale about the feature's own anchor so its slot stays put.
+      ctx.translate(feature.slot.x, feature.slot.y);
+      ctx.scale(scale, scale);
+      ctx.translate(-feature.slot.x, -feature.slot.y);
+      painter(ctx, feature, time);
+      ctx.restore();
+    });
+}
+
+// ============================================================================
+// Feature placement
+// ============================================================================
+
+function allocateSlots(features, slotsById) {
   const allocation = new Map();
-  const available = Array.from(slotsById.values());
-  const assignables = features.filter((feature) => feature.type !== "ship" && feature.id);
-  const usedSlotIds = new Set();
+  const assignable = features.filter((feature) => feature.type !== "ship" && feature.id);
+  const used = new Set();
 
-  assignables.forEach((feature) => {
+  assignable.forEach((feature) => {
     if (feature.slotId && slotsById.has(feature.slotId)) {
-      const slot = slotsById.get(feature.slotId);
-      allocation.set(feature.id, slot);
-      usedSlotIds.add(feature.slotId);
+      allocation.set(feature.id, slotsById.get(feature.slotId));
+      used.add(feature.slotId);
     }
   });
 
-  const remainingSlots = available.filter((slot) => !usedSlotIds.has(slot.id));
-  const remainingFeatures = assignables
+  const remainingSlots = Array.from(slotsById.values()).filter((slot) => !used.has(slot.id));
+  assignable
     .filter((feature) => !allocation.has(feature.id))
     .slice()
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  remainingFeatures.forEach((feature, index) => {
-    const slot = remainingSlots[index];
-    if (!slot) return;
-    allocation.set(feature.id, slot);
-  });
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .forEach((feature, index) => {
+      const slot = remainingSlots[index];
+      if (slot) allocation.set(feature.id, slot);
+    });
   return allocation;
 }
 
-export function placeFeatures(features, width, height, node, isFeatureVisible) {
-  const layout = [];
-  const slots = getFeatureSlots(width, height);
+export function placeFeatures(features, frame, isFeatureVisible) {
+  const slots = SLOT_POSITIONS.map((slot) => ({ id: slot.id, ...framePoint(frame, slot.u, slot.v) }));
   const slotsById = new Map(slots.map((slot) => [slot.id, slot]));
-  const allocation = allocateFeatureSlots(features, slotsById);
+  const allocation = allocateSlots(features, slotsById);
+  const shipSlot = framePoint(frame, 0.63, 0.76);
+  const baseScale = clamp(Math.min(frame.width, frame.height) / 540, 0.8, 1.25);
+
+  const layout = [];
   features.forEach((feature) => {
-    const slot = feature.type === "ship" ? getShipSlot(width, height) : allocation.get(feature.id);
+    const isShip = feature.type === "ship";
+    const slot = isShip ? shipSlot : allocation.get(feature.id);
     if (!slot) return;
     if (!isFeatureVisible(feature)) return;
-    layout.push({ ...feature, slot });
+    layout.push({ ...feature, slot, scale: baseScale * (isShip ? 1.35 : 1) });
   });
   return layout;
 }
 
-function clampAnchor(anchor, canvasWidth, canvasHeight) {
+// ============================================================================
+// Prompt labels
+// ============================================================================
+
+function promptWidth(ctx, text) {
+  return Math.max(PROMPT_MIN_WIDTH, measureText(ctx, text, PROMPT_FONT, 800) + PROMPT_PAD_X * 2);
+}
+
+/**
+ * How much of this prompt the player has already typed.
+ * Returns -1 when the buffer is not a prefix of the prompt.
+ */
+function typedProgress(prompt, buffer) {
+  if (!buffer) return 0;
+  return prompt.startsWith(buffer) ? buffer.length : -1;
+}
+
+/**
+ * The core typing affordance: the prompt shows its own progress. Letters
+ * already typed are filled in and highlighted, so the player watches the word
+ * complete where they are already looking instead of down in a text field.
+ */
+function drawPromptLabel(ctx, text, cx, cy, opts = {}) {
+  const { buffer = "", isHighlighted = false, tail = null, pop = 0, faded = false } = opts;
+  const matched = typedProgress(text, buffer);
+  const isComplete = matched === text.length && text.length > 0;
+  const scale = 1 + pop * 0.08 + (isComplete ? 0.04 : 0);
+
+  const width = promptWidth(ctx, text);
+  const height = PROMPT_HEIGHT;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  if (faded) ctx.globalAlpha = 0.45;
+
+  const x = -width / 2;
+  const y = -height / 2;
+
+  // Nub pointing at the thing this prompt acts on.
+  if (tail) {
+    const dir = tail === "up" ? -1 : 1;
+    inkShape(
+      ctx,
+      [
+        { x: -11, y: dir * (height / 2 - 2) },
+        { x: 11, y: dir * (height / 2 - 2) },
+        { x: 0, y: dir * (height / 2 + 12) },
+      ],
+      { fill: isComplete ? READY : PAPER, lw: 3.4, seed: 91, rough: 0.4 }
+    );
+  }
+
+  inkRect(ctx, x, y, width, height, {
+    fill: isComplete ? READY : PAPER,
+    stroke: INK,
+    lw: isHighlighted || isComplete ? 4.6 : 3.6,
+    radius: height / 2,
+    seed: seedFromString(text) + 3,
+    rough: 1,
+  });
+
+  // Fill the portion already typed.
+  if (matched > 0 && !isComplete) {
+    const ratio = matched / text.length;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, width * ratio, height);
+    ctx.clip();
+    inkRect(ctx, x, y, width, height, {
+      fill: alpha(HIGHLIGHT, 0.45),
+      lw: 0,
+      radius: height / 2,
+      seed: seedFromString(text) + 3,
+      rough: 1,
+    });
+    ctx.restore();
+  }
+
+  // The word, then the typed letters overdrawn in the highlight colour.
+  const textWidth = measureText(ctx, text, PROMPT_FONT, 800);
+  const left = -textWidth / 2;
+  ctx.font = font(PROMPT_FONT, 800);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = isComplete ? PAPER : INK;
+  ctx.fillText(text, left, 1);
+  if (matched > 0 && !isComplete) {
+    ctx.fillStyle = mix(INK, ALERT, 0.75);
+    ctx.fillText(text.slice(0, matched), left, 1);
+  }
+
+  ctx.restore();
+  return { width: width * scale, height: height * scale };
+}
+
+function labelRect(ctx, text, cx, cy) {
+  const width = promptWidth(ctx, text);
   return {
-    x: clamp(anchor.x, PROMPT_CARD_MARGIN, canvasWidth - PROMPT_CARD_MARGIN),
-    y: clamp(anchor.y, PROMPT_CARD_MARGIN, canvasHeight - PROMPT_CARD_MARGIN),
+    x: cx - width / 2 - 6,
+    y: cy - PROMPT_HEIGHT / 2 - 6,
+    width: width + 12,
+    height: PROMPT_HEIGHT + 12,
   };
 }
 
-export function buildFeatureAnchors(features, width, height) {
-  const anchors = new Map();
-  features.forEach((feature) => {
-    if (!feature?.actionId || !feature?.slot) return;
-    const anchor = {
-      x: feature.slot.x,
-      y: feature.slot.y + FEATURE_SLOT_RADIUS + 28,
-    };
-    anchors.set(feature.actionId, clampAnchor(anchor, width, height));
-  });
-  return anchors;
+function rectsOverlap(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
 }
 
-// ============================================================================
-// Prompt Card Drawing
-// ============================================================================
+/**
+ * Picks a spot for a feature's prompt: its preferred side first, then the other
+ * side, then a sideways nudge away from the centre line — whichever is the
+ * first to land clear of every label already placed.
+ */
+function placePromptNear(ctx, text, feature, frame, claimed) {
+  const anchor = PROMPT_ANCHORS[feature.type] || PROMPT_ANCHORS.default;
+  const scale = feature.scale ?? 1;
+  const preferBelow =
+    anchor.prefer === "below" || feature.slot.y < frame.y + frame.height * 0.58;
+  const minY = frame.y + 34;
+  const maxY = frame.y + frame.height - 34;
+  const awayFromCentre = feature.slot.x < frame.x + frame.width / 2 ? -1 : 1;
 
-function drawPromptCardBackground(ctx, x, y, width, height, isHighlighted, radius = 12) {
-  ctx.save();
-  ctx.fillStyle = CARD_BACKGROUND;
-  ctx.strokeStyle = CARD_BORDER;
-  ctx.lineWidth = 2;
-  drawRoundedRectPath(ctx, x, y, width, height, radius);
-  ctx.fill();
-  ctx.stroke();
-  if (isHighlighted) {
-    ctx.strokeStyle = ACCENT_COLOR;
-    ctx.lineWidth = 2;
-    drawRoundedRectPath(ctx, x + 6, y + 6, width - 12, height - 12, Math.max(4, radius - 6));
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawPromptCard(ctx, action, rect, highlightedActionId) {
-  const isHighlighted = action.id === highlightedActionId;
-  ctx.save();
-  drawPromptCardBackground(ctx, rect.x, rect.y, rect.width, rect.height, isHighlighted);
-
-  ctx.textBaseline = "middle";
-  ctx.font = "600 16px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
-  ctx.textAlign = "center";
-  ctx.fillStyle = PROMPT_COLOR;
-  ctx.fillText(action.prompt, rect.x + rect.width / 2, rect.y + rect.height / 2);
-  ctx.restore();
-}
-
-function rectFromAnchor(anchor, rectWidth, rectHeight, canvasWidth, canvasHeight) {
-  const x = clamp(anchor.x - rectWidth / 2, PROMPT_CARD_MARGIN, canvasWidth - rectWidth - PROMPT_CARD_MARGIN);
-  const y = clamp(anchor.y - rectHeight / 2, PROMPT_CARD_MARGIN, canvasHeight - rectHeight - PROMPT_CARD_MARGIN);
-  return { x, y, width: rectWidth, height: rectHeight };
-}
-
-export function drawActionPrompts(ctx, actions, featureAnchors, width, height, highlightedActionId) {
-  if (!actions.length) return;
-  const anchoredEntries = [];
-  const unanchored = [];
-  actions.forEach((action) => {
-    if (action.kind !== "move" && action.isCompleted) {
-      return;
-    }
-    const anchor = featureAnchors.get(action.id);
-    if (anchor) {
-      anchoredEntries.push({ action, anchor });
-    } else {
-      unanchored.push(action);
-    }
+  const candidates = [];
+  [preferBelow, !preferBelow].forEach((below) => {
+    const y = clamp(feature.slot.y + (below ? anchor.below : -anchor.above) * scale, minY, maxY);
+    candidates.push({ x: feature.slot.x, y, tail: below ? "up" : "down" });
+    candidates.push({
+      x: feature.slot.x + awayFromCentre * 70 * scale,
+      y,
+      tail: null,
+    });
   });
 
-  anchoredEntries.forEach(({ action, anchor }) => {
-    const rect = rectFromAnchor(anchor, ANCHORED_PROMPT_WIDTH, ANCHORED_PROMPT_HEIGHT, width, height);
-    drawPromptCard(ctx, action, rect, highlightedActionId);
+  const fits = candidates.find((candidate) => {
+    const rect = labelRect(ctx, text, candidate.x, candidate.y);
+    return !claimed.some((other) => rectsOverlap(rect, other));
   });
-
-  if (!unanchored.length) return;
-
-  const cardWidth = Math.min(360, width - 80);
-  const totalHeight = unanchored.length * CENTER_PROMPT_HEIGHT + (unanchored.length - 1) * CENTER_PROMPT_GAP;
-  const startY = Math.max(20, (height - totalHeight) / 2);
-  const x = (width - cardWidth) / 2;
-
-  unanchored.forEach((action, index) => {
-    const y = startY + index * (CENTER_PROMPT_HEIGHT + CENTER_PROMPT_GAP);
-    drawPromptCard(ctx, action, { x, y, width: cardWidth, height: CENTER_PROMPT_HEIGHT }, highlightedActionId);
-  });
+  const chosen = fits || candidates[0];
+  const x = clamp(
+    chosen.x,
+    frame.x + promptWidth(ctx, text) / 2 + 8,
+    frame.x + frame.width - promptWidth(ctx, text) / 2 - 8
+  );
+  return { x, y: chosen.y, tail: chosen.tail, rect: labelRect(ctx, text, x, chosen.y) };
 }
 
-function getMovementRect(direction, width, height) {
-  const w = Math.min(MOVEMENT_PROMPT_WIDTH, width - 80);
-  const h = MOVEMENT_PROMPT_HEIGHT;
-  const margin = 16;
+const DIRECTION_CHEVRON = {
+  north: [{ x: -9, y: 5 }, { x: 0, y: -6 }, { x: 9, y: 5 }],
+  south: [{ x: -9, y: -5 }, { x: 0, y: 6 }, { x: 9, y: -5 }],
+  west: [{ x: 5, y: -9 }, { x: -6, y: 0 }, { x: 5, y: 9 }],
+  east: [{ x: -5, y: -9 }, { x: 6, y: 0 }, { x: -5, y: 9 }],
+};
+
+function movementPromptPosition(direction, frame) {
+  const inset = PROMPT_HEIGHT / 2 + 42;
   switch (direction) {
     case "north":
-      return { x: (width - w) / 2, y: margin, width: w, height: h };
+      return { x: frame.x + frame.width / 2, y: frame.y + inset };
     case "south":
-      return { x: (width - w) / 2, y: height - h - margin, width: w, height: h };
+      return { x: frame.x + frame.width / 2, y: frame.y + frame.height - inset };
     case "west":
-      return { x: margin, y: (height - h) / 2, width: w, height: h };
+      return { x: frame.x + inset + 30, y: frame.y + frame.height / 2 };
     case "east":
-      return { x: width - w - margin, y: (height - h) / 2, width: w, height: h };
+      return { x: frame.x + frame.width - inset - 30, y: frame.y + frame.height / 2 };
     default:
       return null;
   }
 }
 
-export function drawMovementPrompt(ctx, node, action, direction, width, height, highlightedActionId) {
-  const rect = getMovementRect(direction, width, height);
-  if (!rect) return;
-  const isHighlighted = action.id === highlightedActionId;
+function drawMovementPrompt(ctx, action, direction, frame, opts) {
+  const position = movementPromptPosition(direction, frame);
+  if (!position) return;
+  const size = drawPromptLabel(ctx, action.prompt, position.x, position.y, opts);
+
+  // A chevron on the outward side, so direction reads without reading.
+  const vector = DIRECTION_VECTORS[direction];
+  const offsetX = vector.x * (size.width / 2 + 16);
+  const offsetY = vector.y * (size.height / 2 + 16);
   ctx.save();
-  if (action.isCompleted) {
-    ctx.globalAlpha = 0.5;
+  ctx.translate(position.x + offsetX, position.y + offsetY);
+  inkShape(ctx, DIRECTION_CHEVRON[direction], {
+    fill: alpha(INK, 0.65),
+    lw: 0,
+    seed: 17,
+    rough: 0.3,
+  });
+  ctx.restore();
+}
+
+// ============================================================================
+// Effects
+// ============================================================================
+
+function drawEffects(ctx, effects, time) {
+  effects.forEach((effect) => {
+    const age = time - effect.start;
+    const life = effect.duration ?? 0.9;
+    if (age < 0 || age > life) return;
+    const t = age / life;
+    const fade = 1 - easeOut(t);
+    ctx.save();
+    ctx.globalAlpha = fade;
+    const count = effect.count ?? 8;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + effect.seed;
+      const distance = easeOut(t) * (46 + noise(effect.seed + i, 3) * 34);
+      const x = effect.x + Math.cos(angle) * distance;
+      const y = effect.y + Math.sin(angle) * distance - easeOut(t) * 16;
+      inkStar(ctx, x, y, 8 * (1 - t * 0.5), {
+        points: 4,
+        inner: 2,
+        fill: effect.color ?? HIGHLIGHT,
+        lw: 2,
+        seed: effect.seed + i,
+      });
+    }
+    ctx.restore();
+  });
+}
+
+// ============================================================================
+// Win screen
+// ============================================================================
+
+function drawWinScreen(ctx, width, height, frame, successAction, time, buffer) {
+  ctx.save();
+  ctx.fillStyle = PAPER;
+  roundedFramePath(ctx, frame);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  roundedFramePath(ctx, frame);
+  ctx.clip();
+
+  // Confetti raining down the page.
+  for (let i = 0; i < 46; i += 1) {
+    const speed = 40 + noise(i, 2) * 70;
+    const x = frame.x + noise(i, 5) * frame.width;
+    const y = frame.y + ((noise(i, 9) * frame.height + time * speed) % (frame.height + 40)) - 20;
+    const colors = ["#e8615a", "#f2a516", "#5bb0d6", "#3f9052", "#b78ad6"];
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(time * 2 + i);
+    inkShape(
+      ctx,
+      [
+        { x: -6, y: -4 },
+        { x: 6, y: -4 },
+        { x: 6, y: 4 },
+        { x: -6, y: 4 },
+      ],
+      { fill: colors[i % colors.length], lw: 1.8, seed: i + 2, rough: 0.3 }
+    );
+    ctx.restore();
   }
-  drawPromptCardBackground(ctx, rect.x, rect.y, rect.width, rect.height, isHighlighted);
 
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "center";
-  ctx.font = "600 16px 'Fira Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
-  ctx.fillStyle = PROMPT_COLOR;
-  ctx.fillText(action.prompt, rect.x + rect.width / 2, rect.y + rect.height / 2);
+  const scale = clamp(Math.min(frame.width, frame.height) / 520, 0.75, 1.3);
+  const headingY = frame.y + frame.height * 0.24;
+  const bounce = Math.sin(time * 3) * 6;
+
+  inkText(ctx, "You did it!", frame.x + frame.width / 2, headingY + bounce, {
+    size: 62 * scale,
+    weight: 800,
+    color: INK,
+  });
+  inkText(ctx, "The ship is loaded with gems.", frame.x + frame.width / 2, headingY + 48 * scale + bounce, {
+    size: 22 * scale,
+    weight: 600,
+    color: INK_LIGHT,
+  });
+
+  drawExplorer(ctx, frame.x + frame.width / 2, frame.y + frame.height * 0.72, scale, {
+    bob: Math.sin(time * 3) * 5,
+  });
+
   ctx.restore();
+
+  drawPromptLabel(
+    ctx,
+    successAction.prompt,
+    frame.x + frame.width / 2,
+    frame.y + frame.height - PROMPT_HEIGHT,
+    { buffer }
+  );
 }
 
 // ============================================================================
-// Win Screen
+// Static layer cache
+//
+// Layers 1-6 only change when the node or the canvas size changes, so they are
+// painted once into an offscreen canvas and blitted per frame.
 // ============================================================================
 
-function drawWinScreen(ctx, width, height, successAction) {
+const baseLayerCache = new Map();
+const BASE_CACHE_LIMIT = 6;
+
+function paintBaseLayer(canvas, width, height, node, island, biome, seed) {
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  const frame = makeFrame(width, height);
+
   ctx.save();
-  ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
-  ctx.fillRect(0, 0, width, height);
+  roundedFramePath(ctx, frame);
+  ctx.clip();
+
+  if (biome.id === "dock") {
+    drawDockScene(ctx, frame, biome, seed);
+  } else {
+    const insets = computeLandInsets(node, island, frame);
+    const hasCoast = DIRECTIONS.some((direction) => insets[direction] > 0);
+
+    if (hasCoast) {
+      ctx.fillStyle = biome.water || "#5bb0d6";
+      ctx.fillRect(frame.x - 4, frame.y - 4, frame.width + 8, frame.height + 8);
+    }
+
+    const polygon = landPolygon(frame, insets);
+    if (hasCoast) {
+      // A coastline is worth drawing by hand; smoothing needs the dense point
+      // list that roughen() produces, so the two always travel together.
+      inkShape(ctx, polygon, {
+        fill: biome.ground || "#cbb994",
+        stroke: INK,
+        lw: 4,
+        seed,
+        rough: 3.4,
+        smooth: true,
+      });
+    } else {
+      ctx.fillStyle = biome.ground || "#cbb994";
+      ctx.fillRect(frame.x - 4, frame.y - 4, frame.width + 8, frame.height + 8);
+    }
+
+    const land = {
+      left: frame.x + Math.max(insets.west, 0),
+      right: frame.x + frame.width - Math.max(insets.east, 0),
+      top: frame.y + Math.max(insets.north, 0),
+      bottom: frame.y + frame.height - Math.max(insets.south, 0),
+    };
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(land.left, land.top, land.right - land.left, land.bottom - land.top);
+    ctx.clip();
+    drawBiomeDecor(ctx, node, biome, frame, land, seed);
+    ctx.restore();
+  }
+
+  // Adjacency hints and paths sit above the land in every biome.
+  const openDirections = DIRECTIONS.filter((direction) => neighborInDirection(node, direction, island));
+  drawPaths(ctx, openDirections, frame, biome, seed);
+  openDirections.forEach((direction, index) => {
+    const neighbor = neighborInDirection(node, direction, island);
+    drawAdjacencyHint(ctx, direction, frame, resolveNodeColor(neighbor), seed + index * 11);
+  });
+
   ctx.restore();
 
-  const headingY = Math.max(80, height * 0.25);
+  // The frame itself, drawn last so nothing spills over it.
   ctx.save();
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 56px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("You win!", width / 2, headingY);
+  roundedFramePath(ctx, frame);
+  ctx.lineWidth = FRAME_LINE;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
   ctx.restore();
 
-  const scale = clamp(Math.min(width, height) / 520, 0.7, 1.25);
-  const explorerBaseline = height * 0.65;
-  drawExplorer(ctx, width / 2, explorerBaseline, scale);
-  const cardBase = Math.max(headingY + 60, explorerBaseline + 90);
+  return frame;
+}
 
-  const cardWidth = 280;
-  const cardHeight = 56;
-  const rect = {
-    x: (width - cardWidth) / 2,
-    y: Math.min(height - cardHeight - 40, cardBase),
-    width: cardWidth,
-    height: cardHeight,
-  };
-  drawPromptCard(ctx, { ...successAction, prompt: successAction.prompt }, rect, null);
+function getBaseLayer(node, width, height, island, biome, seed) {
+  // The key names everything the painted layer depends on. Node id alone is not
+  // enough: which sides are open changes the coast, the paths and the hints.
+  const openings = DIRECTIONS.filter((direction) => neighborInDirection(node, direction, island))
+    .map((direction) => `${direction[0]}${resolveNodeColor(neighborInDirection(node, direction, island))}`)
+    .join("");
+  const key = `${node?.id ?? "none"}|${Math.round(width)}x${Math.round(height)}|${biome.id}|${openings}`;
+  const cached = baseLayerCache.get(key);
+  if (cached) {
+    // Refresh recency.
+    baseLayerCache.delete(key);
+    baseLayerCache.set(key, cached);
+    return cached;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  paintBaseLayer(canvas, width, height, node, island, biome, seed);
+  const entry = { canvas };
+  baseLayerCache.set(key, entry);
+  while (baseLayerCache.size > BASE_CACHE_LIMIT) {
+    baseLayerCache.delete(baseLayerCache.keys().next().value);
+  }
+  return entry;
+}
+
+export function clearSceneCache() {
+  baseLayerCache.clear();
 }
 
 // ============================================================================
-// Explorer Drawing (delegates to explorer.js)
+// Animated overlays drawn on top of the cached base
 // ============================================================================
 
-function drawExplorerInScene(ctx, width, height, status) {
-  if (status !== "playing") return;
-  const scale = clamp(Math.min(width, height) / 520, 0.7, 1.05);
-  const x = width / 2;
-  const y = height / 2;
-  drawExplorer(ctx, x, y, scale);
+function drawLiveWater(ctx, node, island, biome, frame, seed, time) {
+  if (biome.id === "dock") {
+    // The dock's shore is cached; the waterline and the open water move.
+    ctx.save();
+    roundedFramePath(ctx, frame);
+    ctx.clip();
+    const sandBottom = frame.y + frame.height * 0.58;
+
+    for (let band = 0; band < 2; band += 1) {
+      const baseY = sandBottom + 5 + band * 12;
+      const points = [];
+      for (let i = 0; i <= 26; i += 1) {
+        const t = i / 26;
+        points.push({
+          x: frame.x + t * frame.width,
+          y: baseY + Math.sin(t * Math.PI * 6 + time * 1.5 + band) * 4,
+        });
+      }
+      ctx.save();
+      ctx.globalAlpha = band === 0 ? 0.95 : 0.5;
+      inkLine(ctx, points, {
+        stroke: biome.foam,
+        lw: band === 0 ? 4 : 3,
+        seed: seed + band,
+        rough: 0.8,
+      });
+      ctx.restore();
+    }
+
+    for (let row = 0; row < 3; row += 1) {
+      const waveY = sandBottom + frame.height * 0.12 + row * frame.height * 0.11;
+      if (waveY > frame.y + frame.height - 12) break;
+      for (let i = 0; i < 5; i += 1) {
+        const drift = ((time * 16 + row * 60 + i * 150) % (frame.width + 200)) - 100;
+        const wx = frame.x + drift;
+        inkLine(
+          ctx,
+          [
+            { x: wx - 22, y: waveY },
+            { x: wx, y: waveY - 5 },
+            { x: wx + 22, y: waveY },
+          ],
+          { stroke: alpha(biome.foam, 0.7), lw: 3, seed: seed + row * 7 + i, rough: 0.8 }
+        );
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  const insets = computeLandInsets(node, island, frame);
+  const coastDirections = DIRECTIONS.filter((direction) => insets[direction] > 0);
+  if (!coastDirections.length) return;
+  const polygon = landPolygon(frame, insets);
+  ctx.save();
+  roundedFramePath(ctx, frame);
+  ctx.clip();
+  coastDirections.forEach((direction, index) => {
+    drawFoam(ctx, direction, polygon, biome, seed + index * 5, time * 1.5);
+  });
+  ctx.restore();
 }
 
 // ============================================================================
-// Main Entry Point
+// Main entry point
 // ============================================================================
 
 /**
- * Renders a complete scene to a canvas context.
+ * Renders a complete scene.
  *
- * @param {CanvasRenderingContext2D} ctx - The canvas 2D context
- * @param {number} width - Canvas width in CSS pixels
- * @param {number} height - Canvas height in CSS pixels
- * @param {object} config - Configuration object
- * @param {object} config.node - The current node being rendered
- * @param {Array} config.actions - Actions available at this node (with prompt, kind, etc.)
- * @param {object} config.state - Game state (status, completedFeatures, etc.)
- * @param {object} config.island - The island data structure
- * @param {string|null} config.highlightedActionId - ID of action to highlight
- * @param {object} config.successAction - Action shown on win screen
- * @param {boolean} config.hidePrompts - Whether to hide prompt cards
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} width  CSS pixels
+ * @param {number} height CSS pixels
+ * @param {object} config
+ * @param {object}  config.node              the node being rendered
+ * @param {Array}   config.actions           visible actions, each with a prompt
+ * @param {object}  config.state             game state
+ * @param {object}  config.island
+ * @param {string}  [config.highlightedActionId]
+ * @param {object}  [config.successAction]   shown on the win screen
+ * @param {boolean} [config.hidePrompts]
+ * @param {Function}[config.isFeatureVisible]
+ * @param {string}  [config.typedBuffer]     what the player has typed so far
+ * @param {number}  [config.time]            seconds, drives all animation
+ * @param {Array}   [config.effects]         transient sparkle bursts
+ * @param {number}  [config.facing]          -1 or 1, which way the explorer looks
  */
 export function renderSceneToCanvas(ctx, width, height, config) {
   const {
@@ -1588,38 +1802,85 @@ export function renderSceneToCanvas(ctx, width, height, config) {
     successAction = null,
     hidePrompts = false,
     isFeatureVisible: isFeatureVisibleCallback = null,
+    typedBuffer = "",
+    time = 0,
+    effects = [],
+    facing = 1,
   } = config;
 
+  const frame = makeFrame(width, height);
+  const biome = getBiomeById(node?.biome);
+  const seed = seedFromString(node?.id ?? "none");
   const safeActions = Array.isArray(actions) ? actions : [];
 
-  // Helper to find node at position
-  const getNodeIdAtPosition = (targetX, targetY) => {
-    if (!island?.nodes) return null;
-    return (
-      Object.values(island.nodes).find(
-        (n) => n.position?.x === targetX && n.position?.y === targetY
-      )?.id || null
-    );
-  };
+  ctx.clearRect(0, 0, width, height);
 
-  // Helper to check feature visibility - use callback if provided
-  const isFeatureVisibleFn = isFeatureVisibleCallback || ((feature) => {
-    if (!feature) return false;
-    if (feature.removable && state?.completedFeatures?.has(feature.id)) {
-      return false;
-    }
-    return true;
+  if (state?.status === "success" && successAction) {
+    drawWinScreen(ctx, width, height, frame, successAction, time, typedBuffer);
+    ctx.save();
+    roundedFramePath(ctx, frame);
+    ctx.lineWidth = FRAME_LINE;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    ctx.restore();
+    return { featureLayout: [], frame };
+  }
+
+  const base = getBaseLayer(node, width, height, island, biome, seed);
+  ctx.drawImage(base.canvas, 0, 0, width, height);
+
+  drawLiveWater(ctx, node, island, biome, frame, seed, time);
+
+  const isFeatureVisibleFn =
+    isFeatureVisibleCallback ||
+    ((feature) => !(feature.removable && state?.completedFeatures?.has(feature.id)));
+
+  const normalizedFeatures = Array.isArray(node?.features)
+    ? node.features
+        .map((feature) => {
+          const normalized = normalizeFeatureEntry(feature);
+          if (!normalized) return null;
+          return {
+            ...normalized,
+            isComplete: state?.completedFeatures?.has(feature.id) ?? false,
+            seed: seedFromString(feature.id),
+            biome,
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  const featureLayout = placeFeatures(normalizedFeatures, frame, isFeatureVisibleFn);
+
+  ctx.save();
+  roundedFramePath(ctx, frame);
+  ctx.clip();
+
+  drawFeatures(ctx, featureLayout, time);
+
+  const centre = framePoint(frame, 0.5, 0.5);
+  const explorerScale = clamp(Math.min(frame.width, frame.height) / 560, 0.7, 1.05);
+  inkEllipse(ctx, centre.x, centre.y + 20, 34 * explorerScale, 11 * explorerScale, {
+    fill: alpha(INK, 0.1),
+    lw: 0,
+    seed,
+    rough: 1.2,
+  });
+  drawExplorer(ctx, centre.x, centre.y + 18, explorerScale, {
+    bob: Math.sin(time * 2) * 3,
+    facing,
   });
 
-  // Clear and fill background
-  const color = resolveNodeColor(node) || SCENE_DEFAULT_COLOR;
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, width, height);
+  drawEffects(ctx, effects, time);
+  ctx.restore();
 
-  // Categorize actions
+  if (hidePrompts) return { featureLayout, frame };
+
+  // Prompts last, above everything, never clipped by the frame.
   const movementEntries = [];
-  const centerEntries = [];
+  const featureEntries = [];
+  const looseEntries = [];
+
   safeActions.forEach((action) => {
     if (action.kind === "move") {
       const direction = getMovementDirection(node, action, island);
@@ -1628,76 +1889,46 @@ export function renderSceneToCanvas(ctx, width, height, config) {
         return;
       }
     }
-    centerEntries.push(action);
+    if (action.kind !== "move" && action.isCompleted) return;
+    const feature = featureLayout.find((entry) => entry.actionId === action.id);
+    if (feature) featureEntries.push({ action, feature });
+    else looseEntries.push(action);
   });
 
-  // Normalize and place features
-  const normalizedFeatures = Array.isArray(node?.features)
-    ? node.features
-        .map((feature) => {
-          const normalized = normalizeFeatureEntry(feature);
-          if (!normalized) return null;
-          const isComplete = state?.completedFeatures?.has(feature.id) ?? false;
-          return { ...normalized, isComplete };
-        })
-        .filter((feature) => feature)
-    : [];
-
-  const featureLayout = placeFeatures(normalizedFeatures, width, height, node, isFeatureVisibleFn);
-  const featureAnchors = buildFeatureAnchors(featureLayout, width, height);
-
-  // Draw biome background
-  const biome = getBiomeById(node?.biome);
-  drawBiomeBackground(ctx, width, height, node, biome, getNodeIdAtPosition);
-
-  // Draw paths
-  drawBiomePaths(ctx, node, movementEntries, width, height, biome);
-
-  // Draw explorer
-  drawExplorerInScene(ctx, width, height, state?.status);
-
-  // Draw adjacency hints
-  movementEntries.forEach(({ direction }) => {
-    drawAdjacencyHint(ctx, node, direction, width, height, biome, island);
+  const labelOpts = (action) => ({
+    buffer: typedBuffer,
+    isHighlighted: action.id === highlightedActionId,
   });
 
-  // Draw features
-  drawFeatures(ctx, featureLayout);
+  // Every label claims a rectangle. Later labels dodge the ones already placed,
+  // so a talkable NPC near an exit never ends up under that exit's prompt.
+  const claimed = [];
 
-  // Draw prompts (unless hidden)
-  if (!hidePrompts) {
-    movementEntries.forEach(({ action, direction }) => {
-      drawMovementPrompt(ctx, node, action, direction, width, height, highlightedActionId);
+  movementEntries.forEach(({ action, direction }) => {
+    const position = movementPromptPosition(direction, frame);
+    if (!position) return;
+    claimed.push(labelRect(ctx, action.prompt, position.x, position.y));
+    drawMovementPrompt(ctx, action, direction, frame, {
+      ...labelOpts(action),
+      faded: action.isCompleted,
     });
-  }
+  });
 
-  // Draw win screen or action prompts
-  if (state?.status === "success" && successAction) {
-    drawWinScreen(ctx, width, height, successAction);
-  } else {
-    if (!hidePrompts) {
-      drawActionPrompts(ctx, centerEntries, featureAnchors, width, height, highlightedActionId);
-    }
-  }
+  featureEntries.forEach(({ action, feature }) => {
+    const placement = placePromptNear(ctx, action.prompt, feature, frame, claimed);
+    claimed.push(placement.rect);
+    drawPromptLabel(ctx, action.prompt, placement.x, placement.y, {
+      ...labelOpts(action),
+      tail: placement.tail,
+    });
+  });
 
-  return { featureLayout, featureAnchors };
-}
+  looseEntries.forEach((action, index) => {
+    const y = frame.y + frame.height * 0.3 + index * (PROMPT_HEIGHT + 16);
+    const x = frame.x + frame.width / 2;
+    claimed.push(labelRect(ctx, action.prompt, x, y));
+    drawPromptLabel(ctx, action.prompt, x, y, labelOpts(action));
+  });
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function getMovementDirection(node, action, island) {
-  if (!node || action.kind !== "move" || !action.to) return null;
-  const destination = island?.nodes?.[action.to];
-  if (!destination || !destination.position || !node.position) {
-    return null;
-  }
-  const deltaX = destination.position.x - node.position.x;
-  const deltaY = destination.position.y - node.position.y;
-  if (deltaX === 0 && deltaY === -1) return "north";
-  if (deltaX === 0 && deltaY === 1) return "south";
-  if (deltaX === -1 && deltaY === 0) return "west";
-  if (deltaX === 1 && deltaY === 0) return "east";
-  return null;
+  return { featureLayout, frame };
 }

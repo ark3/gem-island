@@ -1,3 +1,9 @@
+// The explorer — the player character, drawn in the same ink as the world.
+// Her silhouette is deliberately unchanged from the original; what is new is
+// the shared ink colour, which way she faces, and her idle bob.
+
+import { INK } from "./ink.js";
+
 export function rr(ctx, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -22,7 +28,7 @@ export function fillPath(ctx, color) {
 
 export function strokePath(ctx, lw) {
   ctx.lineWidth = lw;
-  ctx.strokeStyle = "#000";
+  ctx.strokeStyle = INK;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.stroke();
@@ -41,10 +47,12 @@ export function drawExplorer(ctx, x, y, scale = 1, opts = {}) {
   };
 
   const lw = 3 * scale;
+  const bob = opts.bob ?? 0;
+  const facing = opts.facing === -1 ? -1 : 1;
 
   ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
+  ctx.translate(x, y + bob);
+  ctx.scale(scale * facing, scale);
 
   const headR = 22;
   const headCx = 0;
@@ -187,7 +195,7 @@ export function drawExplorer(ctx, x, y, scale = 1, opts = {}) {
   rr(ctx, 4, shoeY, shoeW, shoeH, 5);
   strokePath(ctx, lw);
 
-  ctx.fillStyle = "#000";
+  ctx.fillStyle = INK;
   circle(ctx, -7, headCy - 2, 2.2);
   ctx.fill();
   circle(ctx, 7, headCy - 2, 2.2);
@@ -195,7 +203,7 @@ export function drawExplorer(ctx, x, y, scale = 1, opts = {}) {
 
   ctx.beginPath();
   ctx.arc(0, headCy + 7, 7, 0.15 * Math.PI, 0.85 * Math.PI);
-  ctx.strokeStyle = "#000";
+  ctx.strokeStyle = INK;
   ctx.lineWidth = lw * 0.6;
   ctx.stroke();
 
@@ -268,7 +276,7 @@ export function drawExplorerIcon(ctx, x, y, scale = 1, opts = {}) {
   braidStroke(-1);
   braidStroke(1);
 
-  ctx.fillStyle = "#000";
+  ctx.fillStyle = INK;
   circle(ctx, headCx - 6, headCy - 2, 2);
   ctx.fill();
   circle(ctx, headCx + 6, headCy - 2, 2);
@@ -276,7 +284,7 @@ export function drawExplorerIcon(ctx, x, y, scale = 1, opts = {}) {
 
   ctx.beginPath();
   ctx.arc(headCx, headCy + 5, 5, 0.2 * Math.PI, 0.8 * Math.PI);
-  ctx.strokeStyle = "#000";
+  ctx.strokeStyle = INK;
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.restore();

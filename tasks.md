@@ -13,7 +13,7 @@ deliberate divergences from it live in [`docs/decisions.md`](docs/decisions.md).
   reconstructed from commit messages in Sept 2026 — that is the failure mode
   this convention exists to prevent.
 
-_Last reconciled against `main`: 2026-09-18._
+_Last reconciled against `main`: 2026-09-19._
 
 ---
 
@@ -23,9 +23,11 @@ _Last reconciled against `main`: 2026-09-18._
       interest, and the only one never started. Start with D1: swap single-letter
       prompts for words. See *Track: Typing Progression*.
 - [ ] **Headless smoke test in CI.** The one infra item left, deferred because it
-      needs a dependency decision. See *Track: Infrastructure*.
+      needs a dependency decision. See *Track: Infrastructure*. Note that
+      `tools/gallery.html` now covers part of the gap by eye, with no dependency.
 
 _Cleared 2026-09-18: infra refresh, PR #2 decision._
+_Cleared 2026-09-19: the visual overhaul — see *Track: Rendering and Visuals*._
 
 ---
 
@@ -52,7 +54,47 @@ seams for exactly this work.
 
 ## Track: Rendering and Visuals
 
-- [ ] Improve path rendering.
+- [x] **Visual overhaul, 2026-09-19.** The game now looks the way
+      `visual-v1.md` always said it should, and
+      [`docs/visual-v2.md`](docs/visual-v2.md) fills in the palette, line
+      weights, typography and motion that v1 deliberately left open. In detail:
+  - [x] `src/ink.js` — a shared drawing vocabulary: ink/paper tokens, seeded
+        hand-drawn line wobble, flat-fill and texture helpers, canvas text.
+        Everything visible is now drawn with it.
+  - [x] Every biome redrawn flat. All `createLinearGradient` /
+        `createRadialGradient` calls are gone, per v1's "no gradients, lighting,
+        or shading".
+  - [x] Every feature and the explorer redrawn with ink outlines. The explorer's
+        silhouette is unchanged; she gained a facing direction and an idle bob.
+  - [x] Coastlines. Any edge with no neighbouring node now shows open water with
+        a hand-drawn shore and foam, so the edge of the island looks like one.
+  - [x] Improve path rendering — one pale trail, the same colour in every biome,
+        ink-outlined, with stepping dots and a chevron at each exit.
+  - [x] Adjacency hints redrawn as doorways capping each path opening, instead
+        of arcs poking in at the frame edge.
+  - [x] Prompts show their own typing progress: the label fills as the word is
+        typed and turns green when it is complete. Labels also claim rectangles
+        and dodge each other, so a prompt never lands under another one.
+  - [x] Motion, at a steady 60fps: idle life, a directional slide between nodes,
+        pickup bursts, a confetti win screen. Pinned to a still frame under
+        `prefers-reduced-motion`.
+  - [x] Page chrome rebuilt as a storybook page; the typing bar moved out of the
+        sidebar to directly under the scene.
+  - [x] Map redrawn: ocean background, ink-outlined tiles in each node's
+        dominant colour, green checks, a compass.
+  - [x] `tools/gallery.html` — every biome, coastline, typing state and feature
+        on one page, rendered from the game's own modules. Zero dependencies.
+  - [x] Three unrecorded divergences from `visual-v1.md` resolved **toward the
+        document**: gradients removed, outlines added, and undiscovered map nodes
+        no longer drawn (the map is a record of the trip, not a picture of the
+        island). Recorded in `docs/visual-v2.md` §1.
+  - [x] Fixed along the way: the static-layer cache keyed only on node id and
+        size, so two nodes with the same id and different exits shared a
+        background; the gem meter's track was an inline element, so its fill
+        never showed; the page did not fit an average laptop window.
+  - [?] **Open:** the ship scene is the only one with a horizon. It reads well,
+        but it is the one place the top-down camera bends. Left as is; worth a
+        look if a frontal camera is ever reconsidered.
 - [x] **PR #2, "Renderer Redesign Proposal"** — closed unmerged 2026-09-18.
       Proposed replacing the top-down view with a frontal perspective
       ("Storybook Vignette") while reversing `visual-v1.md`'s explicit "slightly
@@ -65,6 +107,7 @@ seams for exactly this work.
       `e17ea52`)
 - [x] Improve feature rendering (`a3c6745`, `ca7cc5f`, `fbedbfd`)
 - [x] Extract scene rendering into a standalone module (`8a4c114`)
+- [x] Add `src/ink.js` and redraw everything through it (visual overhaul, above)
 
 ## Track: Infrastructure and Test Coverage
 
