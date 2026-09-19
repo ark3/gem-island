@@ -97,6 +97,13 @@ seams for exactly this work.
         landed on top of the art it labelled; the page did not fit an average
         laptop window. The first and third were found by `tools/gallery.html`,
         not by playing.
+  - [x] Fixed after play-testing: the map's green completion check vanished into
+        the green biome tiles (it now sits on a paper halo); the dock's drifting
+        waves were drawn over the pier rather than behind it (the pier moved out
+        of the cached layer); and the node transition scrolled the wrong way —
+        walking north moved the world up instead of down. `visual-v2.md` had
+        documented that last one as intended, so the doc was wrong too and is
+        corrected.
   - [?] **Open:** the ship scene is the only one with a horizon. It reads well,
         but it is the one place the top-down camera bends. Left as is; worth a
         look if a frontal camera is ever reconsidered.

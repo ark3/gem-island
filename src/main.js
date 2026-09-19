@@ -14,6 +14,7 @@ import { createPromptService } from "./prompt-service.js";
 import { resolveNodeColor } from "./biomes.js";
 import { drawExplorerIcon } from "./explorer.js";
 import {
+  DIRECTION_VECTORS,
   clearSceneCache,
   getMovementDirection,
   renderSceneToCanvas,
@@ -21,6 +22,7 @@ import {
 import {
   INK,
   INK_LIGHT,
+  PAPER,
   PAPER_DEEP,
   READY,
   alpha,
@@ -210,8 +212,9 @@ function drawFrame() {
   workCtx.clearRect(0, 0, width, height);
   paintScene(workCtx, width, height);
 
-  // The outgoing scene leaves the way the player travelled; the new one
-  // follows it in, so the direction typed is the direction seen.
+  // The world scrolls against the direction of travel, the way it does when
+  // you walk: head north and the land slides down past you while the new place
+  // comes in over the top edge.
   const dx = transition.vector.x * width;
   const dy = transition.vector.y * height;
 
@@ -299,15 +302,23 @@ function renderMap() {
 }
 
 function drawMapCheck(ctx, x, y, size) {
-  inkLine(
-    ctx,
-    [
-      { x: x - size, y },
-      { x: x - size * 0.2, y: y + size * 0.8 },
-      { x: x + size, y: y - size * 0.9 },
-    ],
-    { stroke: READY, lw: Math.max(2.5, size * 0.55), seed: 12, rough: 0.4, smooth: false }
-  );
+  const stroke = Math.max(2.5, size * 0.55);
+  const points = [
+    { x: x - size, y },
+    { x: x - size * 0.2, y: y + size * 0.8 },
+    { x: x + size, y: y - size * 0.9 },
+  ];
+  // A paper halo under the tick, so it reads on the green tiles as clearly as
+  // on the sandy ones — forest and plains are close enough to the tick colour
+  // that it disappeared into them.
+  inkLine(ctx, points, {
+    stroke: PAPER,
+    lw: stroke + Math.max(2, size * 0.45),
+    seed: 12,
+    rough: 0.4,
+    smooth: false,
+  });
+  inkLine(ctx, points, { stroke: READY, lw: stroke, seed: 12, rough: 0.4, smooth: false });
 }
 
 function drawCompass(ctx, x, y) {
@@ -386,13 +397,9 @@ function burstAtAction(action) {
 
 function beginTransition(direction) {
   if (reducedMotion || !direction) return;
-  const vectors = {
-    north: { x: 0, y: 1 },
-    south: { x: 0, y: -1 },
-    west: { x: 1, y: 0 },
-    east: { x: -1, y: 0 },
-  };
-  const vector = vectors[direction];
+  // The grid vector *is* the slide vector: walking north means the new place
+  // arrives from the north edge of the screen.
+  const vector = DIRECTION_VECTORS[direction];
   if (!vector) return;
 
   const dpr = window.devicePixelRatio || 1;

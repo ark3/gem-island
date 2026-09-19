@@ -61,7 +61,11 @@ const FRAME_LINE = 5;
 
 const DIRECTIONS = ["north", "south", "east", "west"];
 
-const DIRECTION_VECTORS = {
+// Where the dock's waterline sits, as a fraction of the frame height. The shore
+// scene and the pier both key off it.
+const DOCK_SAND_BOTTOM = 0.58;
+
+export const DIRECTION_VECTORS = {
   north: { x: 0, y: -1 },
   south: { x: 0, y: 1 },
   west: { x: -1, y: 0 },
@@ -511,7 +515,7 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
 function drawDockScene(ctx, frame, biome, seed) {
   const { x, y, width, height } = frame;
   const shoreBottom = y + height * 0.36;
-  const sandBottom = y + height * 0.58;
+  const sandBottom = y + height * DOCK_SAND_BOTTOM;
 
   ctx.fillStyle = biome.water;
   ctx.fillRect(x, y, width, height);
@@ -550,11 +554,19 @@ function drawDockScene(ctx, frame, biome, seed) {
     seed: seed + 13,
   });
 
-  // The pier, running down the middle into the water.
-  const pierWidth = Math.max(86, width * 0.19);
+}
+
+/**
+ * The pier, running down the middle into the water. Drawn with the animated
+ * water rather than into the cached layer, so the drifting waves pass behind
+ * it instead of washing over the planks.
+ */
+function drawDockPier(ctx, frame, biome, seed) {
+  const sandBottom = frame.y + frame.height * DOCK_SAND_BOTTOM;
+  const pierWidth = Math.max(86, frame.width * 0.19);
   const pierTop = sandBottom - 10;
-  const pierBottom = y + height - 6;
-  const centreX = x + width / 2;
+  const pierBottom = frame.y + frame.height - 6;
+  const centreX = frame.x + frame.width / 2;
   inkShape(
     ctx,
     [
@@ -1799,7 +1811,7 @@ function drawLiveWater(ctx, node, island, biome, frame, seed, time) {
     ctx.save();
     roundedFramePath(ctx, frame);
     ctx.clip();
-    const sandBottom = frame.y + frame.height * 0.58;
+    const sandBottom = frame.y + frame.height * DOCK_SAND_BOTTOM;
 
     for (let band = 0; band < 2; band += 1) {
       const baseY = sandBottom + 5 + band * 12;
@@ -1839,6 +1851,8 @@ function drawLiveWater(ctx, node, island, biome, frame, seed, time) {
         );
       }
     }
+
+    drawDockPier(ctx, frame, biome, seed);
     ctx.restore();
     return;
   }

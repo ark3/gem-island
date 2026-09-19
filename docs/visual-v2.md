@@ -210,7 +210,7 @@ life and confirms actions; it never asks to be watched.**
 | people | a gentle bob, each on their own phase |
 | kite, ship | sway and rock |
 | owl | blinks about every four seconds |
-| moving between nodes | the scene you leave slides out the way you travelled and the next slides in behind it — the direction you typed is the direction you see |
+| moving between nodes | the world scrolls *against* your travel, the way it does when you walk: head north and the land slides down past you while the new place arrives over the top edge |
 | picking something up | a short burst of ink stars at the object |
 | winning | confetti, a bouncing headline |
 
@@ -234,7 +234,10 @@ Per v1, the map reflects what the player knows, not what the island is.
 - **Discovered** nodes are ink-outlined rounded tiles in the node's dominant
   colour. **Undiscovered** nodes are not drawn at all, so the island's shape is
   revealed by exploring.
-- **Completed** nodes carry a green hand-drawn check.
+- **Completed** nodes carry a green hand-drawn check, over a paper halo. Any
+  mark drawn on a node tile has to read against *every* biome colour, and the
+  check is close enough to the forest and plains greens to vanish into them
+  without one.
 - The player is the explorer's own face icon, at her node.
 - A small compass sits in a corner, because north always means the top of the
   screen and it is worth saying so.
