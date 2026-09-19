@@ -88,10 +88,15 @@ seams for exactly this work.
         document**: gradients removed, outlines added, and undiscovered map nodes
         no longer drawn (the map is a record of the trip, not a picture of the
         island). Recorded in `docs/visual-v2.md` §1.
+  - [x] Win screen: the haul is on screen now — the explorer among a fan of
+        gems, under confetti — rather than only described.
   - [x] Fixed along the way: the static-layer cache keyed only on node id and
         size, so two nodes with the same id and different exits shared a
         background; the gem meter's track was an inline element, so its fill
-        never showed; the page did not fit an average laptop window.
+        never showed; on a short canvas a prompt clamped back into the frame
+        landed on top of the art it labelled; the page did not fit an average
+        laptop window. The first and third were found by `tools/gallery.html`,
+        not by playing.
   - [?] **Open:** the ship scene is the only one with a horizon. It reads well,
         but it is the one place the top-down camera bends. Left as is; worth a
         look if a frontal camera is ever reconsidered.

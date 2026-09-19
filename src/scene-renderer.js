@@ -722,15 +722,9 @@ function drawAdjacencyHint(ctx, direction, frame, neighborColor, seed) {
 // Features
 // ============================================================================
 
-function drawGemFeature(ctx, feature, twinkle) {
-  const { slot, color } = feature;
-  const { x, y } = slot;
-  const size = 24;
-  const body = color?.fill ?? "#e8615a";
-  const facet = color?.stroke ?? mix(body, PAPER, 0.45);
-  const seed = feature.seed;
-
-  groundPatch(ctx, x, y + size * 0.9, size * 1.2, feature.biome, seed);
+function paintGem(ctx, x, y, size, body, facet, seed, twinkle) {
+  // Line weight follows the gem, so a small one is not all outline.
+  const lw = clamp(size / 6, 2, 4);
   inkShape(
     ctx,
     [
@@ -739,7 +733,7 @@ function drawGemFeature(ctx, feature, twinkle) {
       { x, y: y + size },
       { x: x - size * 0.85, y: y - size * 0.2 },
     ],
-    { fill: body, lw: 4, seed, rough: 0.8 }
+    { fill: body, lw, seed, rough: 0.8 }
   );
   inkShape(
     ctx,
@@ -748,20 +742,29 @@ function drawGemFeature(ctx, feature, twinkle) {
       { x: x + size * 0.85, y: y - size * 0.2 },
       { x, y: y - size * 0.05 },
     ],
-    { fill: facet, lw: 2.6, seed: seed + 3, rough: 0.6 }
+    { fill: facet, lw: lw * 0.65, seed: seed + 3, rough: 0.6 }
   );
 
   const sparkle = 0.55 + Math.sin(twinkle * 2.4 + seed) * 0.45;
   ctx.save();
   ctx.globalAlpha = sparkle;
-  inkStar(ctx, x + size * 0.75, y - size * 0.95, 8 * (0.7 + sparkle * 0.5), {
+  inkStar(ctx, x + size * 0.75, y - size * 0.95, size * 0.33 * (0.7 + sparkle * 0.5), {
     points: 4,
-    inner: 2.2,
+    inner: size * 0.09,
     fill: PAPER,
-    lw: 2,
+    lw: clamp(size / 12, 1.2, 2),
     seed: seed + 7,
   });
   ctx.restore();
+}
+
+function drawGemFeature(ctx, feature, twinkle) {
+  const { slot, color } = feature;
+  const size = 24;
+  const body = color?.fill ?? "#e8615a";
+  const facet = color?.stroke ?? mix(body, PAPER, 0.45);
+  groundPatch(ctx, slot.x, slot.y + size * 0.9, size * 1.2, feature.biome, feature.seed);
+  paintGem(ctx, slot.x, slot.y, size, body, facet, feature.seed, twinkle);
 }
 
 function drawShellFeature(ctx, feature) {
@@ -1424,20 +1427,28 @@ function placePromptNear(ctx, text, feature, frame, claimed) {
 
   const candidates = [];
   [preferBelow, !preferBelow].forEach((below) => {
-    const y = clamp(feature.slot.y + (below ? anchor.below : -anchor.above) * scale, minY, maxY);
-    candidates.push({ x: feature.slot.x, y, tail: below ? "up" : "down" });
+    const wanted = feature.slot.y + (below ? anchor.below : -anchor.above) * scale;
+    const y = clamp(wanted, minY, maxY);
+    // A candidate the frame had to drag back into view is no longer clear of
+    // the art it labels, so it is only a fallback.
+    const clamped = Math.abs(wanted - y) > 4;
+    candidates.push({ x: feature.slot.x, y, tail: below ? "up" : "down", clamped });
     candidates.push({
       x: feature.slot.x + awayFromCentre * 70 * scale,
       y,
       tail: null,
+      clamped,
     });
   });
 
-  const fits = candidates.find((candidate) => {
+  const isClear = (candidate) => {
     const rect = labelRect(ctx, text, candidate.x, candidate.y);
     return !claimed.some((other) => rectsOverlap(rect, other));
-  });
-  const chosen = fits || candidates[0];
+  };
+  const chosen =
+    candidates.find((candidate) => !candidate.clamped && isClear(candidate)) ||
+    candidates.find(isClear) ||
+    candidates[0];
   const x = clamp(
     chosen.x,
     frame.x + promptWidth(ctx, text) / 2 + 8,
@@ -1558,22 +1569,40 @@ function drawWinScreen(ctx, width, height, frame, successAction, time, buffer) {
   }
 
   const scale = clamp(Math.min(frame.width, frame.height) / 520, 0.75, 1.3);
-  const headingY = frame.y + frame.height * 0.24;
+  const centreX = frame.x + frame.width / 2;
+  const headingY = frame.y + frame.height * 0.2;
   const bounce = Math.sin(time * 3) * 6;
 
-  inkText(ctx, "You did it!", frame.x + frame.width / 2, headingY + bounce, {
+  inkText(ctx, "You did it!", centreX, headingY + bounce, {
     size: 62 * scale,
     weight: 800,
     color: INK,
   });
-  inkText(ctx, "The ship is loaded with gems.", frame.x + frame.width / 2, headingY + 48 * scale + bounce, {
+  inkText(ctx, "The ship is loaded with gems.", centreX, headingY + 48 * scale + bounce, {
     size: 22 * scale,
     weight: 600,
     color: INK_LIGHT,
   });
 
-  drawExplorer(ctx, frame.x + frame.width / 2, frame.y + frame.height * 0.72, scale, {
-    bob: Math.sin(time * 3) * 5,
+  const explorerY = frame.y + frame.height * 0.7;
+  drawExplorer(ctx, centreX, explorerY, scale * 1.45, { bob: Math.sin(time * 3) * 5 });
+
+  // The haul, fanned out at her feet.
+  const haul = [
+    { fill: "#e8615a", stroke: "#f6c6bf" },
+    { fill: "#5bb0d6", stroke: "#c4e4f0" },
+    { fill: "#3fa34d", stroke: "#bfe3c4" },
+    { fill: "#b78ad6", stroke: "#e4d4f1" },
+    { fill: "#f2a516", stroke: "#fbe2b2" },
+    { fill: "#ef8fb4", stroke: "#fad4e3" },
+    { fill: "#5f9ea0", stroke: "#c8e0e1" },
+  ];
+  haul.forEach((colour, index) => {
+    const spread = (index - (haul.length - 1) / 2) / ((haul.length - 1) / 2);
+    const x = centreX + spread * frame.width * 0.33;
+    const y = explorerY + 38 * scale + Math.abs(spread) * 16 * scale;
+    const size = (15 + (1 - Math.abs(spread)) * 8) * scale;
+    paintGem(ctx, x, y, size, colour.fill, colour.stroke, index * 13 + 5, time);
   });
 
   ctx.restore();
