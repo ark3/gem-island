@@ -1,12 +1,29 @@
 /**
+ * SUPERSEDED -- do not extend this file.
+ *
+ * Tiers were rejected. Prompt difficulty is now scored per string rather than
+ * bucketed into levels: see src/typing-difficulty.js, src/prompt-vocabulary.js
+ * and src/typing-estimate.js, and docs/decisions.md entry D6 for why, including
+ * a table of the alternatives considered and set aside.
+ *
+ * In short: a touch-typing curriculum teaches keys in roughly the order the
+ * scoring model ranks them, because both follow finger comfort. So the score
+ * already favours the keys a beginner has learned, and tiers restate that in a
+ * second place which then has to be kept in sync.
+ *
+ * This file is still what main.js serves. It is removed when the scored
+ * vocabulary is wired into the game -- see tasks.md, Track: Typing Progression.
+ *
+ * ---
+ *
  * Typing prompt vocabularies, ordered to follow a touch-typing curriculum.
  *
- * Tiers exist so prompts can track what the player has actually been taught.
  * A tier is a flat list of prompts plus the set of letters it is allowed to
  * use; the allowed set is what the tests check the word list against, so a
  * typo cannot silently smuggle an untaught key into practice.
  *
- * Keep word lists short, concrete and calm. See docs/decisions.md, D5.
+ * Keep word lists short, concrete and calm. See docs/initial-full-design.md:
+ * the player is never rushed, punished or trapped.
  */
 
 export const KEYBOARD_ROWS = Object.freeze({

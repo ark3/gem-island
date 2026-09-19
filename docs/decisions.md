@@ -46,32 +46,25 @@ exists and is unused.
 
 ### Reversal, 2026-09-19
 
-Prompts are now words, drawn from tiered vocabularies in `src/prompt-lists.js`.
-`initial-full-design.md` is accurate again on this point.
+Prompts are words, not single letters. `initial-full-design.md` is accurate
+again on this point.
 
-**What changed the decision:** the player is learning touch typing at school,
-and is currently working through the home row. Key-finding speed is no longer
-the skill being built, so pacing prompts to it no longer serves her. Single
-letters cannot practise touch typing, because there is no word shape to learn.
+**What changed the decision:** the player is learning touch typing at school
+and is working through the home row. Key-finding speed is no longer the skill
+being built, so pacing prompts to it no longer serves her. Single letters
+cannot practise touch typing at all, because there is no word shape to learn.
 
-**What replaced it:** four tiers that follow a touch-typing curriculum rather
-than a difficulty curve —
+**How words are chosen** is a separate decision — see
+[D6](#d6--prompt-difficulty-adapts-to-typing-speed), which supersedes the first
+implementation of this reversal.
 
-| Tier | Letters | Purpose |
-|---|---|---|
-| `home-letters` | `asdfghjkl` | One key at a time. The gentlest start, and the only tier that practises `j`, which barely occurs in real home-row words. |
-| `home-words` (default) | `asdfghjkl` | Short words typed without leaving the home row. Matches where school is now. |
-| `home-top-words` | + `qwertyuiop` | Adds the top row once those keys are taught. |
-| `common-words` | whole alphabet | Familiar words, full keyboard. |
-
-The tier is selectable at runtime with `?tier=home-letters` and falls back to
-the default for anything unrecognized, so it can be moved as school moves
-without a code change.
-
-Each tier declares the letters it is allowed to use, and the tests check every
-word against that set. A word containing an untaught key is a test failure, not
-something to be noticed during play — this caught a stray non-ASCII character
-in the word list the first time the tests ran.
+> **Transitional state.** The first version of this reversal shipped four
+> vocabulary *tiers* in `src/prompt-lists.js`, selectable with a `?tier=`
+> parameter. That approach was rejected: the difficulty scoring already favours
+> the keys taught first, so tiers restate the curriculum somewhere it has to be
+> kept in sync, and impose steps where a gradient is wanted. The tier code is
+> still what `main.js` serves, and comes out when D6 is integrated. Do not
+> extend it. D6's rejected-alternatives table has the full reasoning.
 
 ---
 
@@ -190,3 +183,78 @@ developer tool. A webfont buys that for two `<link>` tags.
 **If this is reversed**, drop the `<link>` tags and the `"Baloo 2"` entry from
 both `FONT_STACK` in `src/ink.js` and `--font` in `index.html`; nothing else
 depends on it.
+---
+
+## D6 — Prompt difficulty adapts to typing speed
+
+- **Date:** 2026-09-19
+- **Status:** **Decided and built, not yet integrated.** The modules exist with
+  tests; `main.js` still serves the tier list from D1 until the integration
+  lands.
+- **Crosses:** `design-v1.md:276`, "Explicit non-goals (v1)", first item —
+  *"Typing speed measurement or adaptive difficulty."*
+
+Crossing that non-goal is deliberate. It was the right call when a single
+keypress was itself the challenge: there was nothing for adaptation to act on.
+Now that prompts are words, word selection has a difficulty axis, and the
+non-goal has outlived its reason.
+
+### The design
+
+**Difficulty is a property of the string**, computed in
+`src/typing-difficulty.js` from which fingers move and how: per-key cost by
+finger and displacement (down harder than up, harder than sideways),
+per-transition cost (same finger on different keys is worst, a repeated key is
+cheap, alternating hands is free), averaged per keystroke. Small length and
+familiarity terms sit on top. Averaging rather than summing is what keeps
+length the least influential term — summing would make it dominate by
+arithmetic alone.
+
+**The vocabulary is never restricted by which keys have been taught.** All of
+it is always available; the scoring decides what surfaces. This works because
+a touch-typing curriculum teaches keys in roughly the order this model ranks
+them — both follow finger comfort — so a low target naturally yields the keys
+a beginner already knows. At the easiest setting, selection draws from `d`,
+`f`, `j` and `k` without being told they are the ones she has learned.
+
+**The whole visible set moves together.** Every prompt on screen sits near one
+target difficulty, so choosing among them is a choice about where to go in the
+game, never about how hard to work — and the timing sample stays unbiased,
+since whichever prompt gets typed was drawn from the same place.
+
+**Measurement is invisible and lives in `src/typing-estimate.js`.** The signal
+is the average interval between keystrokes; the delay before the first
+keystroke counts for a little, capped, because it also contains reading the
+screen, deciding where to go and looking at the scenery. Corrections are
+included rather than filtered out — fumbling is exactly what should pull
+difficulty down. The target rises faster than it falls, so one distracted word
+does not undo a good run. Nothing is displayed: no timer, no score, no
+readout. The only observable effect is which words appear next.
+
+### Rejected alternatives
+
+Recorded because each is a plausible idea that was tried and set aside. Please
+read the reasons before proposing any of them again.
+
+| Rejected | Why |
+|---|---|
+| **Difficulty tiers** (`home-letters`, `home-words`, …) | Redundant. The scoring already favours the keys taught first, so tiers restate the curriculum in a second place that must be kept in sync, and impose steps where a gradient is wanted. This was built first and is being removed. |
+| **Restricting the vocabulary to keys already taught** | Same reason, and it fails on its own terms: she can type the keys she has not formally learned, just less comfortably. It is a gradient, not a cliff. |
+| **Per-key or per-letter observed tracking** | Unnecessary. The static model already tilts toward comfortable keys; learning per-key costs adds state and complexity to reach a place the geometry already reaches. |
+| **A runtime vocabulary switch (`?tier=…`)** | The target difficulty is the only control needed, and it sets itself. |
+| **Persisting the estimate between sessions** | Deliberately not done. Adaptation converges in about ten prompts, which makes persistence unnecessary; persistence for web apps is solved elsewhere in the owner's projects and is not wanted here. |
+| **A spread of difficulties within one visible set** | Would couple the difficulty she gets to the destination she wants, and would bias the timing sample by letting her self-select the easy option. |
+| **Using her word choice as a difficulty signal** | She plays for the game. Her choices are driven by where she wants to go, not by which word looks easier, so the signal would be noise. |
+
+### Known weaknesses
+
+- **The weights are reasoned, not measured.** `fastIntervalMs` and
+  `slowIntervalMs` in `typing-estimate.js` are guesses at a seven-year-old's
+  pace and should be the first thing corrected against a real session.
+- **The frequency corpus is web-derived.** It has no `dad` at all while
+  ranking `administration` highly, so the familiarity term currently measures
+  the internet's familiarity rather than hers. An age-of-acquisition or
+  early-reader source would fit far better.
+- **The transition band mixes registers.** Around a target of 2.3, a single
+  screen can show `hla`, `side`, `gf` and `digital` together. Not wrong by the
+  model, but it may read oddly; the familiarity weight is the lever.
