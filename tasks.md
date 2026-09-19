@@ -19,15 +19,18 @@ _Last reconciled against `main`: 2026-09-19._
 
 ## Now
 
-- [ ] **Typing progression.** The track that matches the player's current
-      interest, and the only one never started. Start with D1: swap single-letter
-      prompts for words. See *Track: Typing Progression*.
-- [ ] **Headless smoke test in CI.** The one infra item left, deferred because it
-      needs a dependency decision. See *Track: Infrastructure*. Note that
-      `tools/gallery.html` now covers part of the gap by eye, with no dependency.
+- [ ] **Invisible typing measurement.** The next step in the typing track, and
+      the first one constrained by
+      [D6](docs/decisions.md#d6--gem-island-is-deliberately-the-calm-alternative):
+      it informs which prompts are served and is never shown to the player.
+      See *Track: Typing Progression*.
+- [ ] **Headless smoke test in CI.** Blocked on a dependency decision. See
+      *Track: Infrastructure*. Note that `tools/gallery.html` now covers part of
+      the gap by eye, with no dependency.
 
 _Cleared 2026-09-18: infra refresh, PR #2 decision._
 _Cleared 2026-09-19: the visual overhaul — see *Track: Rendering and Visuals*._
+_Cleared 2026-09-19: word prompts (D1 reversed)._
 
 ---
 
@@ -37,17 +40,32 @@ The whole track is unstarted. `prompt-service.js` has stub methods
 (`refresh()`, `peek()`) and an ignored `actionId` parameter that were left as
 seams for exactly this work.
 
-- [ ] Revisit [decision D1](docs/decisions.md#d1--typing-prompts-are-single-letters-not-words):
-      move from single-letter prompts to word prompts.
-      `createPromptTrainer({ prompts: [...] })` already accepts a word list, so
-      this is a word list plus a call-site change.
-- [ ] Characterize the player's typing ability. Nothing currently measures
-      typing at all — no timing, no accuracy, no per-letter statistics anywhere
-      in `src/`.
-- [ ] Implement letter/word difficulty characterization.
-- [ ] Adjust action prompt difficulty based on player progress. The trainer's
-      `weights` are currently a frozen constant; this is where adaptation hooks
-      in.
+Everything here is constrained by
+[D5](docs/decisions.md#d5--gem-island-is-deliberately-the-calm-alternative):
+measurement is invisible, difficulty never chases the player mid-session.
+
+- [x] Reverse [D1](docs/decisions.md#d1--typing-prompts-are-single-letters-not-words):
+      word prompts replace single letters, served from four curriculum tiers in
+      `src/prompt-lists.js`. Default `home-words`; override with `?tier=`.
+      Verified in a browser — words activate actions, the override works, and an
+      unknown tier falls back cleanly.
+- [x] Fix within-view prompt uniqueness for vocabularies smaller than the
+      15-prompt recent window. Without it the 9-prompt `home-letters` tier could
+      hand two visible actions the same prompt, making one unreachable, since
+      `TypingEngine` matches the first and stops. Regression test included, and
+      confirmed failing against the old code.
+- [ ] Characterize the player's typing ability. Nothing measures typing today —
+      no timing, accuracy, or per-letter statistics anywhere in `src/`. Per D5
+      this stays invisible to the player: it selects the next session's tier and
+      is never displayed.
+- [ ] Implement letter/word difficulty characterization, so a tier can be
+      ordered internally (shorter and more common words first) rather than
+      served uniformly at random.
+- [ ] Promote the player between tiers. `TIER_ORDER` in `prompt-lists.js` is the
+      progression; something needs to decide when to advance, between sessions.
+- [ ] Extend the home-row vocabulary. 38 words is enough to fill a node without
+      repeats, but a longer list keeps a 5–15 minute session from feeling
+      circular.
 - [ ] Either implement or remove the no-op stubs in `prompt-service.js`
       (`refresh()` is called from `main.js` and does nothing; `peek()` returns
       `null` and is never called).

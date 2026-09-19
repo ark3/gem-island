@@ -17,7 +17,8 @@ the time, the entry says so explicitly rather than inventing one.
 ## D1 — Typing prompts are single letters, not words
 
 - **Date:** 2026-01-01 (`3cb2233`, "Switch to single-letter typing prompts")
-- **Status:** Active, **under review** as of 2026-09-18
+- **Status:** **Reversed** on 2026-09-19. Retained in full below, because the
+  reasoning is what makes the reversal legible.
 - **Contradicts:** `initial-full-design.md` — "Visible actions on the screen each
   have an associated prompt (**common words**, not semantically tied to the
   action)."
@@ -43,8 +44,34 @@ train key-finding, not typing. `createPromptTrainer({ prompts: [...] })` already
 accepts a word list and weights entries evenly, so the plumbing for a reversal
 exists and is unused.
 
-**If this is reversed**, update this entry rather than deleting it, and note
-that `initial-full-design.md` becomes accurate again.
+### Reversal, 2026-09-19
+
+Prompts are now words, drawn from tiered vocabularies in `src/prompt-lists.js`.
+`initial-full-design.md` is accurate again on this point.
+
+**What changed the decision:** the player is learning touch typing at school,
+and is currently working through the home row. Key-finding speed is no longer
+the skill being built, so pacing prompts to it no longer serves her. Single
+letters cannot practise touch typing, because there is no word shape to learn.
+
+**What replaced it:** four tiers that follow a touch-typing curriculum rather
+than a difficulty curve —
+
+| Tier | Letters | Purpose |
+|---|---|---|
+| `home-letters` | `asdfghjkl` | One key at a time. The gentlest start, and the only tier that practises `j`, which barely occurs in real home-row words. |
+| `home-words` (default) | `asdfghjkl` | Short words typed without leaving the home row. Matches where school is now. |
+| `home-top-words` | + `qwertyuiop` | Adds the top row once those keys are taught. |
+| `common-words` | whole alphabet | Familiar words, full keyboard. |
+
+The tier is selectable at runtime with `?tier=home-letters` and falls back to
+the default for anything unrecognized, so it can be moved as school moves
+without a code change.
+
+Each tier declares the letters it is allowed to use, and the tests check every
+word against that set. A word containing an untaught key is a test failure, not
+something to be noticed during play — this caught a stray non-ASCII character
+in the word list the first time the tests ran.
 
 ---
 
@@ -163,3 +190,35 @@ developer tool. A webfont buys that for two `<link>` tags.
 **If this is reversed**, drop the `<link>` tags and the `"Baloo 2"` entry from
 both `FONT_STACK` in `src/ink.js` and `--font` in `index.html`; nothing else
 depends on it.
+
+---
+
+## D6 — Gem Island is deliberately the calm alternative
+
+- **Date:** 2026-09-19
+- **Status:** Active
+- **Source:** the game's purpose, stated by its author.
+
+The player's school uses a typing game that is "fast and stressful and hard."
+Gem Island is explicitly the opposite, and that is a large part of what it is
+for. `initial-full-design.md` already says the player is "never rushed,
+punished, or trapped" and that typing is "a motor activity, not a language
+test"; this entry records that the contrast is deliberate, so later work does
+not erode it by accident.
+
+**Binding consequences:**
+
+- No timers, countdowns, or anything that makes a pause cost something.
+- No scores, streaks, words-per-minute readouts, or accuracy percentages shown
+  to the player.
+- No failure states. Typing the wrong thing continues to do nothing at all.
+- Difficulty may rise, but only between sessions or between tiers — never
+  inside a session in response to how the player is doing, which is what makes
+  a drill feel like it is chasing you.
+
+**This constrains the unbuilt work in `../tasks.md`.** The typing-progression
+track calls for characterizing the player's ability and adapting prompt
+difficulty. Under this decision, any such measurement is **invisible**: it may
+inform which tier is served next time, and it may never be displayed, scored,
+or used to speed the game up mid-session. A progress metric the player can see
+is the school game's design, not this one's.

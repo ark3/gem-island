@@ -134,3 +134,38 @@ test("typing engine limits buffer to 15 characters", () => {
   assert.equal(lastBuffer.length, 15);
   assert.equal(lastBuffer, "abcdefghijklmno");
 });
+
+test("prompt service keeps a view unique when the vocabulary is smaller than the recent window", () => {
+  // The smallest tier (home-letters) holds 9 prompts while the service
+  // remembers the last 15. Once the recent window covers the whole
+  // vocabulary, no candidate is ever "not recent" -- but two visible actions
+  // must still never share a prompt, or TypingEngine makes one unreachable.
+  const vocabulary = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+  const service = createPromptService({
+    trainer: createPromptTrainer({
+      prompts: vocabulary,
+      random: () => Math.random(),
+    }),
+  });
+
+  // Burn through enough views that the recent window is saturated.
+  for (let view = 0; view < 6; view += 1) {
+    const used = new Set();
+    for (let action = 0; action < 6; action += 1) {
+      used.add(service.getPrompt(`action-${action}`, used));
+    }
+  }
+
+  const used = new Set();
+  const assigned = [];
+  for (let action = 0; action < 6; action += 1) {
+    const prompt = service.getPrompt(`action-${action}`, used);
+    assigned.push(prompt);
+    used.add(prompt);
+  }
+
+  assert.equal(new Set(assigned).size, assigned.length, "a view reused a prompt");
+  for (const prompt of assigned) {
+    assert.ok(vocabulary.includes(prompt), `"${prompt}" is outside the vocabulary`);
+  }
+});

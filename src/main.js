@@ -10,6 +10,8 @@ import {
   isFeatureVisible,
 } from "./island-engine.js";
 import { createPromptService } from "./prompt-service.js";
+import { createPromptTrainer } from "./prompt-trainer.js";
+import { DEFAULT_TIER, getPromptTier } from "./prompt-lists.js";
 import {
   DIRECTION_VECTORS,
   clearSceneCache,
@@ -42,10 +44,28 @@ const elements = {
   map: document.querySelector("[data-map]"),
 };
 
+// Which typing vocabulary to serve. Defaults to the home row, matching where a
+// beginning touch typist starts; override with ?tier=home-top-words (and so on)
+// as more of the keyboard is taught. See src/prompt-lists.js for the tiers.
+function resolvePromptTier() {
+  let requested = DEFAULT_TIER;
+  try {
+    requested = new URLSearchParams(window.location.search).get("tier") ?? DEFAULT_TIER;
+  } catch {
+    // No URL to read (or a hostile one); the default tier is always playable.
+  }
+  const tier = getPromptTier(requested);
+  console.info(`Gem Island prompts: ${tier.label} (${tier.prompts.length} prompts)`);
+  return tier;
+}
+
 let engine = null;
 let island = null;
 let state = null;
-const promptService = createPromptService();
+const promptTier = resolvePromptTier();
+const promptService = createPromptService({
+  trainer: createPromptTrainer({ prompts: promptTier.prompts }),
+});
 
 let lastSceneNode = null;
 let lastSceneActions = [];
