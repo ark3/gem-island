@@ -91,6 +91,7 @@ const PROMPT_ANCHORS = {
   sandcastle: { below: 62, above: 80 },
   owl: { below: 62, above: 78 },
   kite: { below: 98, above: 82 },
+  gem: { below: 76, above: 78 },
   wildflower: { below: 60, above: 72 },
   carrot: { below: 60, above: 72 },
   default: { below: 58, above: 70 },
@@ -722,38 +723,81 @@ function drawAdjacencyHint(ctx, direction, frame, neighborColor, seed) {
 // Features
 // ============================================================================
 
+/**
+ * A brilliant-cut gem: flat table on top, girdle across the middle, pointed
+ * pavilion below, and the facet lines that make it read as a cut stone rather
+ * than a coloured shape.
+ *
+ * `size` is half the gem's height, so the whole stone fits 2*size — the same
+ * bounding box the old diamond used.
+ */
 function paintGem(ctx, x, y, size, body, facet, seed, twinkle) {
   // Line weight follows the gem, so a small one is not all outline.
   const lw = clamp(size / 6, 2, 4);
+  // Facet lines have to survive at the size the gem is actually played at, so
+  // they get a floor rather than a pure proportion.
+  const facetLine = Math.max(1.8, lw * 0.55);
+  const facetInk = alpha(INK, 0.6);
+
+  const tableHalf = size * 0.46;
+  const girdleHalf = size * 0.92;
+  const tableY = y - size;
+  const girdleY = y - size * 0.28;
+  const pointY = y + size;
+
   inkShape(
     ctx,
     [
-      { x, y: y - size },
-      { x: x + size * 0.85, y: y - size * 0.2 },
-      { x, y: y + size },
-      { x: x - size * 0.85, y: y - size * 0.2 },
+      { x: x - tableHalf, y: tableY },
+      { x: x + tableHalf, y: tableY },
+      { x: x + girdleHalf, y: girdleY },
+      { x, y: pointY },
+      { x: x - girdleHalf, y: girdleY },
     ],
-    { fill: body, lw, seed, rough: 0.8 }
+    { fill: body, lw, seed, rough: 0.7 }
   );
+
+  // The table catches the light — one flat lighter facet, never a gradient.
   inkShape(
     ctx,
     [
-      { x, y: y - size },
-      { x: x + size * 0.85, y: y - size * 0.2 },
-      { x, y: y - size * 0.05 },
+      { x: x - tableHalf, y: tableY },
+      { x: x + tableHalf, y: tableY },
+      { x: x + tableHalf, y: girdleY },
+      { x: x - tableHalf, y: girdleY },
     ],
-    { fill: facet, lw: lw * 0.65, seed: seed + 3, rough: 0.6 }
+    { fill: facet, stroke: facetInk, lw: facetLine, seed: seed + 3, rough: 0.5 }
   );
+
+  // Girdle, then the pavilion facets fanning down to the point.
+  inkLine(
+    ctx,
+    [
+      { x: x - girdleHalf, y: girdleY },
+      { x: x + girdleHalf, y: girdleY },
+    ],
+    { stroke: facetInk, lw: facetLine, seed: seed + 5, rough: 0.4 }
+  );
+  [-1, 1].forEach((side) => {
+    inkLine(
+      ctx,
+      [
+        { x: x + side * tableHalf, y: girdleY },
+        { x, y: pointY },
+      ],
+      { stroke: facetInk, lw: facetLine, seed: seed + 7 + side, rough: 0.4 }
+    );
+  });
 
   const sparkle = 0.55 + Math.sin(twinkle * 2.4 + seed) * 0.45;
   ctx.save();
   ctx.globalAlpha = sparkle;
-  inkStar(ctx, x + size * 0.75, y - size * 0.95, size * 0.33 * (0.7 + sparkle * 0.5), {
+  inkStar(ctx, x + size * 0.95, y - size * 0.85, size * 0.33 * (0.7 + sparkle * 0.5), {
     points: 4,
     inner: size * 0.09,
     fill: PAPER,
     lw: clamp(size / 12, 1.2, 2),
-    seed: seed + 7,
+    seed: seed + 11,
   });
   ctx.restore();
 }
@@ -763,7 +807,7 @@ function drawGemFeature(ctx, feature, twinkle) {
   const size = 24;
   const body = color?.fill ?? "#e8615a";
   const facet = color?.stroke ?? mix(body, PAPER, 0.45);
-  groundPatch(ctx, slot.x, slot.y + size * 0.9, size * 1.2, feature.biome, feature.seed);
+  groundPatch(ctx, slot.x, slot.y + size * 0.98, size * 0.95, feature.biome, feature.seed);
   paintGem(ctx, slot.x, slot.y, size, body, facet, feature.seed, twinkle);
 }
 
@@ -1425,19 +1469,34 @@ function placePromptNear(ctx, text, feature, frame, claimed) {
   const maxY = frame.y + frame.height - 34;
   const awayFromCentre = feature.slot.x < frame.x + frame.width / 2 ? -1 : 1;
 
-  const candidates = [];
-  [preferBelow, !preferBelow].forEach((below) => {
+  const sideFor = (below) => {
     const wanted = feature.slot.y + (below ? anchor.below : -anchor.above) * scale;
     const y = clamp(wanted, minY, maxY);
-    // A candidate the frame had to drag back into view is no longer clear of
-    // the art it labels, so it is only a fallback.
-    const clamped = Math.abs(wanted - y) > 4;
-    candidates.push({ x: feature.slot.x, y, tail: below ? "up" : "down", clamped });
-    candidates.push({
-      x: feature.slot.x + awayFromCentre * 70 * scale,
+    return {
       y,
-      tail: null,
-      clamped,
+      tail: below ? "up" : "down",
+      // A candidate the frame had to drag back into view is no longer clear of
+      // the art it labels, so it is only a fallback.
+      clamped: Math.abs(wanted - y) > 4,
+    };
+  };
+  const sides = [sideFor(preferBelow), sideFor(!preferBelow)];
+
+  // Tried in order of how well the label stays attached to its object: both
+  // sides directly above/below first (those keep the nub), then sideways —
+  // inward before outward, since the movement prompts live at the edges.
+  const candidates = [];
+  sides.forEach((side) => {
+    candidates.push({ x: feature.slot.x, y: side.y, tail: side.tail, clamped: side.clamped });
+  });
+  [-awayFromCentre, awayFromCentre].forEach((direction) => {
+    sides.forEach((side) => {
+      candidates.push({
+        x: feature.slot.x + direction * 70 * scale,
+        y: side.y,
+        tail: null,
+        clamped: side.clamped,
+      });
     });
   });
 
@@ -1589,13 +1648,13 @@ function drawWinScreen(ctx, width, height, frame, successAction, time, buffer) {
 
   // The haul, fanned out at her feet.
   const haul = [
-    { fill: "#e8615a", stroke: "#f6c6bf" },
-    { fill: "#5bb0d6", stroke: "#c4e4f0" },
-    { fill: "#3fa34d", stroke: "#bfe3c4" },
-    { fill: "#b78ad6", stroke: "#e4d4f1" },
-    { fill: "#f2a516", stroke: "#fbe2b2" },
-    { fill: "#ef8fb4", stroke: "#fad4e3" },
-    { fill: "#5f9ea0", stroke: "#c8e0e1" },
+    { fill: "#e8615a", stroke: "#f09a95" },
+    { fill: "#5bb0d6", stroke: "#93cbe4" },
+    { fill: "#3fa34d", stroke: "#7ec287" },
+    { fill: "#b78ad6", stroke: "#cfb0e5" },
+    { fill: "#f2a516", stroke: "#f6c463" },
+    { fill: "#ef8fb4", stroke: "#f4b4cd" },
+    { fill: "#5f9ea0", stroke: "#94bfc0" },
   ];
   haul.forEach((colour, index) => {
     const spread = (index - (haul.length - 1) / 2) / ((haul.length - 1) / 2);
