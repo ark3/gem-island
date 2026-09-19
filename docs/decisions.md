@@ -190,35 +190,3 @@ developer tool. A webfont buys that for two `<link>` tags.
 **If this is reversed**, drop the `<link>` tags and the `"Baloo 2"` entry from
 both `FONT_STACK` in `src/ink.js` and `--font` in `index.html`; nothing else
 depends on it.
-
----
-
-## D6 — Gem Island is deliberately the calm alternative
-
-- **Date:** 2026-09-19
-- **Status:** Active
-- **Source:** the game's purpose, stated by its author.
-
-The player's school uses a typing game that is "fast and stressful and hard."
-Gem Island is explicitly the opposite, and that is a large part of what it is
-for. `initial-full-design.md` already says the player is "never rushed,
-punished, or trapped" and that typing is "a motor activity, not a language
-test"; this entry records that the contrast is deliberate, so later work does
-not erode it by accident.
-
-**Binding consequences:**
-
-- No timers, countdowns, or anything that makes a pause cost something.
-- No scores, streaks, words-per-minute readouts, or accuracy percentages shown
-  to the player.
-- No failure states. Typing the wrong thing continues to do nothing at all.
-- Difficulty may rise, but only between sessions or between tiers — never
-  inside a session in response to how the player is doing, which is what makes
-  a drill feel like it is chasing you.
-
-**This constrains the unbuilt work in `../tasks.md`.** The typing-progression
-track calls for characterizing the player's ability and adapting prompt
-difficulty. Under this decision, any such measurement is **invisible**: it may
-inform which tier is served next time, and it may never be displayed, scored,
-or used to speed the game up mid-session. A progress metric the player can see
-is the school game's design, not this one's.
