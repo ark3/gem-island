@@ -40,19 +40,20 @@ is now misleading. See `decisions.md`, entry D1.
 | [`visual-v1.md`](visual-v1.md) | How the game *looks*: coloring-book aesthetic, camera, composition, map visuals. Explicitly not a final art spec. | **Current** |
 | [`decisions.md`](decisions.md) | Deliberate divergences from the above, with rationale and date. | **Current** |
 
-## Historical documents
+## Partly superseded documents
 
 | Document | Status |
 |---|---|
-| [`design-v1.md`](design-v1.md) | **Superseded** by `design-v2.md`, which says so in its own preamble. Retained for its "Design invariant" summary and its out-of-scope list, neither of which v2 restates. |
+| [`design-v1.md`](design-v1.md) | **Superseded in part.** `design-v2.md` supersedes and clarifies *parts* of it — spatial semantics, map behaviour, completion rules and pockets — and says so in its own preamble. The rest still stands, notably the "Design invariant" summary and the out-of-scope list, neither of which v2 restates. Check v2 first on the topics above; fall back here otherwise. |
 
 ---
 
 ## Conventions for these documents
 
 - Design documents are **snapshots**, revised intentionally rather than
-  incrementally. A new major revision gets a new `-vN` file; the superseded one
-  stays and is marked historical here.
+  incrementally. A new major revision gets a new `-vN` file; the older one stays,
+  and this index records which parts of it the new revision replaced. A revision
+  that supersedes only part of its predecessor should say which part.
 - Implementation decisions that contradict a snapshot go in `decisions.md`, not
   into the snapshot. Snapshots record what we meant; the decision log records
   what we chose instead, and why.
