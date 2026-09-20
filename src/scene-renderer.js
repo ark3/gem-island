@@ -193,7 +193,7 @@ export function getMovementDirection(node, action, island) {
 /** A flat patch of scuffed ground that anchors an object to the land. */
 function groundPatch(ctx, x, y, radius, biome, seed) {
   inkEllipse(ctx, x, y, radius, radius * 0.34, {
-    fill: mix(biome.ground || "#cbb994", PAPER, 0.3),
+    fill: mix(biome.ground, PAPER, 0.3),
     lw: 0,
     seed,
     rough: 1.4,
@@ -231,7 +231,7 @@ function landPolygon(frame, insets) {
 }
 
 function drawFoam(ctx, direction, polygon, biome, seed, phase) {
-  const foam = biome.foam || "#fdfbf2";
+  const foam = biome.foam;
   const [topLeft, topRight, bottomRight, bottomLeft] = polygon;
   let from;
   let to;
@@ -312,23 +312,23 @@ function drawTree(ctx, x, y, scale, biome, seed) {
       { x: x + trunkWidth * 0.7, y: y + trunkHeight * 0.6 },
       { x: x - trunkWidth * 0.7, y: y + trunkHeight * 0.6 },
     ],
-    { fill: biome.trunk || "#9c6733", lw: 3 * scale, seed, rough: 1 }
+    { fill: biome.trunk, lw: 3 * scale, seed, rough: 1 }
   );
   const radius = 30 * scale;
   inkCircle(ctx, x, y - radius * 0.55, radius, {
-    fill: biome.canopy || LEAF,
+    fill: biome.canopy,
     lw: 3.4 * scale,
     seed: seed + 5,
     rough: 2.6,
   });
   inkCircle(ctx, x - radius * 0.42, y - radius * 0.95, radius * 0.6, {
-    fill: biome.canopy || LEAF,
+    fill: biome.canopy,
     lw: 3.4 * scale,
     seed: seed + 9,
     rough: 2.2,
   });
   inkCircle(ctx, x + radius * 0.45, y - radius * 0.85, radius * 0.52, {
-    fill: biome.canopyDeep || "#2d7140",
+    fill: biome.canopyDeep,
     lw: 3.4 * scale,
     seed: seed + 13,
     rough: 2.2,
@@ -347,7 +347,7 @@ function drawBoulder(ctx, x, y, scale, biome, seed) {
       { x: x + 27 * scale, y: y - 6 * scale },
       { x: x + 31 * scale, y: y + 14 * scale },
     ],
-    { fill: tint || "#b7bdc9", lw: 3.6 * scale, seed, rough: 2.2, smooth: true }
+    { fill: tint, lw: 3.6 * scale, seed, rough: 2.2, smooth: true }
   );
   inkLine(
     ctx,
@@ -368,12 +368,12 @@ function drawBloom(ctx, x, y, scale, biome, seed) {
       { x, y: y + 12 * scale },
       { x: x + signedNoise(seed, 2) * 3, y: y - 6 * scale },
     ],
-    { stroke: biome.detail || "#5f8f3c", lw: 2.8 * scale, seed, rough: 0.8 }
+    { stroke: biome.detail, lw: 2.8 * scale, seed, rough: 0.8 }
   );
   for (let i = 0; i < 5; i += 1) {
     const angle = (i / 5) * Math.PI * 2;
     inkCircle(ctx, x + Math.cos(angle) * 6 * scale, y - 8 * scale + Math.sin(angle) * 6 * scale, 4.4 * scale, {
-      fill: color || "#f5c542",
+      fill: color,
       lw: 2 * scale,
       seed: seed + i,
       rough: 0.5,
@@ -422,7 +422,7 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
         });
       scatterTufts(ctx, bounds, {
         count: 12,
-        color: alpha(biome.canopyDeep || "#2d7140", 0.6),
+        color: alpha(biome.canopyDeep, 0.6),
         scale: scale * 0.85,
         seed: seed + 41,
       });
@@ -431,7 +431,7 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
     case "rock": {
       decorSpots(seed + 60, 5, bounds, keepClear * 0.8).forEach((spot) => {
         inkEllipse(ctx, spot.x, spot.y, 34 * scale, 16 * scale, {
-          fill: alpha(biome.moss || "#7fa86a", 0.55),
+          fill: alpha(biome.moss, 0.55),
           lw: 0,
           seed: spot.seed,
           rough: 2.4,
@@ -454,7 +454,7 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
         if (index % 3 === 0) {
           drawBloom(ctx, spot.x, spot.y, scale, biome, spot.seed);
         } else {
-          drawGrassTuft(ctx, spot.x, spot.y, scale, alpha(biome.detail || "#5f8f3c", 0.75), spot.seed);
+          drawGrassTuft(ctx, spot.x, spot.y, scale, alpha(biome.detail, 0.75), spot.seed);
         }
       });
       break;
@@ -481,7 +481,7 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
             const x = land.left + ((c + 0.5) / 7) * (land.right - land.left);
             const y = top + rowHeight * 0.34;
             inkCircle(ctx, x, y, 5 * scale, {
-              fill: biome.cropRipe || "#f0c64a",
+              fill: biome.cropRipe,
               lw: 2 * scale,
               seed: seed + i * 11 + c,
               rough: 0.6,
@@ -493,7 +493,7 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
     }
     case "sand": {
       stipple(ctx, bounds, {
-        color: alpha(biome.detail || "#c79a4e", 0.4),
+        color: alpha(biome.detail, 0.4),
         count: 140,
         radius: 2.1,
         seed: seed + 5,
@@ -508,12 +508,12 @@ function drawBiomeDecor(ctx, node, biome, frame, land, seed) {
             { x: spot.x, y: spot.y - 6 * scale },
             { x: spot.x + span, y: spot.y },
           ],
-          { stroke: alpha(biome.detail || "#c79a4e", 0.6), lw: 3 * scale, seed: spot.seed, rough: 1 }
+          { stroke: alpha(biome.detail, 0.6), lw: 3 * scale, seed: spot.seed, rough: 1 }
         );
       });
       scatterTufts(ctx, bounds, {
         count: 6,
-        color: alpha("#8faa55", 0.85),
+        color: alpha(biome.tuft, 0.85),
         scale: scale * 0.9,
         seed: seed + 91,
       });
@@ -564,7 +564,7 @@ function drawDockScene(ctx, frame, biome, seed) {
     seed: seed + 9,
   });
   stipple(ctx, { x, y: shoreBottom - 4, width, height: sandBottom - shoreBottom + 4 }, {
-    color: alpha("#c79a4e", 0.4),
+    color: alpha(biome.sandDetail, 0.4),
     count: 40,
     radius: 2,
     seed: seed + 13,
@@ -658,7 +658,7 @@ function drawPaths(ctx, directions, frame, biome, seed) {
   if (!directions.length) return;
   const thickness = pathThickness(frame);
   const outline = buildPathOutline(directions, frame, thickness);
-  const trail = mix(PAPER_DEEP, biome.ground || "#cbb994", 0.18);
+  const trail = mix(PAPER_DEEP, biome.ground, 0.18);
   inkShape(ctx, outline, {
     fill: trail,
     stroke: alpha(INK, 0.7),
@@ -1722,7 +1722,7 @@ function paintBaseLayer(canvas, width, height, node, island, biome, seed) {
     const hasCoast = DIRECTIONS.some((direction) => insets[direction] > 0);
 
     if (hasCoast) {
-      ctx.fillStyle = biome.water || SKY;
+      ctx.fillStyle = biome.water;
       ctx.fillRect(frame.x - 4, frame.y - 4, frame.width + 8, frame.height + 8);
     }
 
@@ -1731,7 +1731,7 @@ function paintBaseLayer(canvas, width, height, node, island, biome, seed) {
       // A coastline is worth drawing by hand; smoothing needs the dense point
       // list that roughen() produces, so the two always travel together.
       inkShape(ctx, polygon, {
-        fill: biome.ground || "#cbb994",
+        fill: biome.ground,
         stroke: INK,
         lw: 4,
         seed,
@@ -1739,7 +1739,7 @@ function paintBaseLayer(canvas, width, height, node, island, biome, seed) {
         smooth: true,
       });
     } else {
-      ctx.fillStyle = biome.ground || "#cbb994";
+      ctx.fillStyle = biome.ground;
       ctx.fillRect(frame.x - 4, frame.y - 4, frame.width + 8, frame.height + 8);
     }
 

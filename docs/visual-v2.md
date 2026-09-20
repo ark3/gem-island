@@ -75,6 +75,13 @@ most of its scene, and is the colour of its square on the map — one colour, th
 jobs, which is what makes the map legible. Supporting tints live alongside it in
 `src/biomes.js`.
 
+A biome draws things it has no colour of its own for — a tree at the edge of
+the plains, foam where a forest meets the sea. Those come from `BIOME_DEFAULTS`
+at the top of `src/biomes.js`, which every biome inherits and overrides as it
+likes. They used to sit in the renderer as `biome.canopy || "#3f9052"`, which
+put biome colours in two files and let the forest's canopy and its default
+drift a shade apart.
+
 | Biome | Dominant | Character |
 |---|---|---|
 | `dock` | `#5bb0d6` | sea blue: grass, then sand, then open water and the jetty |
@@ -132,9 +139,10 @@ Three rules keep the set small enough to stay a set:
 range `lighten()` and `darken()` reach, so the answer to "what can I paint this
 with" is a page rather than a grep.
 
-The hex literals left in `src/scene-renderer.js` are all biome fallbacks
-(`biome.canopy || …`), not prop colours. Moving those to `biomes.js` where the
-rest of the biome palette lives is tracked in `../tasks.md`.
+`src/scene-renderer.js` now contains no hex literal at all. Every colour it
+draws with arrives as a token from `ink.js`, a field from `biomes.js`, or a
+`lighten()` / `darken()` of one of those — so a literal appearing in a diff of
+that file is a question worth asking in review.
 
 ---
 

@@ -163,11 +163,16 @@ does not start by rebuilding what this one figured out.
         figure by figure — the first attempt diffed page screenshots and was
         swamped by a sub-pixel layout shift. Only the ship hull, the NPC and the
         win screen moved perceptibly; everything else was under a delta of 30.
-- [ ] **Move the biome fallbacks into `biomes.js`.** The eighteen hex literals
-      still in `scene-renderer.js` are all `biome.canopy || "#2d7140"`-style
-      defaults for optional biome fields. They duplicate `FALLBACK_BIOME`, which
-      only carries three of them, and they are the last place a reader can
-      mistake a literal for an acceptable pattern.
+- [x] **Biome fallbacks moved into `biomes.js`, 2026-09-20.** Eighteen
+      `biome.canopy || "#2d7140"`-style defaults lived in the renderer, putting
+      biome colours in two files — and the forest's canopy had already drifted a
+      shade from its own default. They are now `BIOME_DEFAULTS`, which every
+      biome inherits and overrides as it likes. Two were not even guarded and
+      simply hardcoded a biome's colour; those are `tuft` and `sandDetail` now.
+      `src/scene-renderer.js` contains no hex literal at all, so one appearing
+      in a diff of that file is now a question worth asking in review. Verified
+      byte-identical: every figure in the gallery matched the previous commit
+      exactly.
 - [?] **Open, raised by the cold read:** `rendering-v1.md`'s feature
       architecture — per-feature `draw()`/`promptAnchor()` hooks, biome slot
       queries, constraint-based placement — was never built. `docs/README.md`
