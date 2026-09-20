@@ -8,30 +8,16 @@ import {
   getItemCount,
   getVisibleActions,
   isFeatureVisible,
-  isNodeCompleted,
 } from "./island-engine.js";
 import { createPromptService } from "./prompt-service.js";
-import { resolveNodeColor } from "./biomes.js";
-import { drawExplorerIcon } from "./explorer.js";
 import {
   DIRECTION_VECTORS,
   clearSceneCache,
   getMovementDirection,
   renderSceneToCanvas,
 } from "./scene-renderer.js";
-import {
-  INK,
-  INK_LIGHT,
-  PAPER,
-  PAPER_DEEP,
-  READY,
-  alpha,
-  clamp,
-  easeInOut,
-  inkLine,
-  inkRect,
-  inkText,
-} from "./ink.js";
+import { renderMapToCanvas } from "./map-renderer.js";
+import { clamp, easeInOut } from "./ink.js";
 
 const SUCCESS_ACTION = Object.freeze({
   id: "new-island",
@@ -40,7 +26,6 @@ const SUCCESS_ACTION = Object.freeze({
   prompt: "new",
 });
 
-const MAP_OCEAN = "#bfe0ea";
 const TRANSITION_SECONDS = 0.34;
 
 const elements = {
@@ -244,102 +229,9 @@ function loop(timestamp) {
 
 function renderMap() {
   if (!island || !state) return;
-  const nodes = Object.values(island.nodes || {}).filter((entry) => entry?.position);
-  if (!nodes.length) return;
   const sized = sizeCanvas(elements.map, 260, 1);
   if (!sized) return;
-  const { ctx, width, height } = sized;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = MAP_OCEAN;
-  ctx.fillRect(0, 0, width, height);
-
-  const xs = nodes.map((node) => node.position.x);
-  const ys = nodes.map((node) => node.position.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const cols = Math.max(1, maxX - minX + 1);
-  const rows = Math.max(1, maxY - minY + 1);
-  const padding = 16;
-  const cell = Math.max(14, Math.min((width - padding * 2) / cols, (height - padding * 2) / rows));
-  const startX = (width - cell * cols) / 2;
-  const startY = (height - cell * rows) / 2;
-
-  // Only what the player has seen is drawn — the map is a record of the trip,
-  // not a picture of the island (visual-v1, "Node states").
-  nodes.forEach((node) => {
-    if (!state.visitedNodes?.has(node.id)) return;
-    const x = startX + (node.position.x - minX) * cell;
-    const y = startY + (node.position.y - minY) * cell;
-    inkRect(ctx, x + 1, y + 1, cell - 2, cell - 2, {
-      fill: resolveNodeColor(node) || PAPER_DEEP,
-      stroke: alpha(INK, 0.75),
-      lw: 2,
-      radius: Math.max(3, cell * 0.16),
-      seed: (node.position.x + 1) * 31 + (node.position.y + 1) * 7,
-      rough: 0.7,
-    });
-    if (isNodeCompleted(node, state)) {
-      drawMapCheck(ctx, x + cell * 0.72, y + cell * 0.28, cell * 0.2);
-    }
-  });
-
-  const current = island.nodes?.[state.currentNodeId];
-  if (state.status !== "success" && current?.position) {
-    const x = startX + (current.position.x - minX) * cell;
-    const y = startY + (current.position.y - minY) * cell;
-    drawExplorerIcon(ctx, x + cell / 2, y + cell / 2, clamp(cell / 96, 0.32, 0.62), {
-      skin: "#f3d2b4",
-      hairPink: "#ef8fb4",
-      hairPurple: "#b78ad6",
-      tieBlue: "#5bb0d6",
-    });
-  }
-
-  drawCompass(ctx, width - 26, 26);
-}
-
-function drawMapCheck(ctx, x, y, size) {
-  const stroke = Math.max(2.5, size * 0.55);
-  const points = [
-    { x: x - size, y },
-    { x: x - size * 0.2, y: y + size * 0.8 },
-    { x: x + size, y: y - size * 0.9 },
-  ];
-  // A paper halo under the tick, so it reads on the green tiles as clearly as
-  // on the sandy ones — forest and plains are close enough to the tick colour
-  // that it disappeared into them.
-  inkLine(ctx, points, {
-    stroke: PAPER,
-    lw: stroke + Math.max(2, size * 0.45),
-    seed: 12,
-    rough: 0.4,
-    smooth: false,
-  });
-  inkLine(ctx, points, { stroke: READY, lw: stroke, seed: 12, rough: 0.4, smooth: false });
-}
-
-function drawCompass(ctx, x, y) {
-  inkText(ctx, "N", x, y - 8, { size: 13, weight: 800, color: INK_LIGHT });
-  inkLine(
-    ctx,
-    [
-      { x, y: y - 1 },
-      { x, y: y + 10 },
-    ],
-    { stroke: INK_LIGHT, lw: 2, seed: 4, rough: 0.3 }
-  );
-  inkLine(
-    ctx,
-    [
-      { x: x - 4, y: y + 3 },
-      { x, y: y - 2 },
-      { x: x + 4, y: y + 3 },
-    ],
-    { stroke: INK_LIGHT, lw: 2, seed: 5, rough: 0.3, smooth: false }
-  );
+  renderMapToCanvas(sized.ctx, sized.width, sized.height, { island, state });
 }
 
 // ============================================================================

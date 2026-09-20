@@ -36,7 +36,7 @@ is now misleading. See `decisions.md`, entry D1.
 |---|---|---|
 | [`initial-full-design.md`](initial-full-design.md) | What the game *is*: player experience, core loop, node/action model, quest structure. The broadest description. | **Current** |
 | [`design-v2.md`](design-v2.md) | Spatial semantics, directional consistency, map behavior, node and pocket completion rules. | **Current** |
-| [`rendering-v1.md`](rendering-v1.md) | How scenes are drawn: the layer stack, biome and feature metadata, adjacency hints. | **Current**, partly aspirational |
+| [`rendering-v1.md`](rendering-v1.md) | How scenes are drawn: the layer stack, biome and feature metadata, adjacency hints. | **Current for the layer stack only.** Its *feature architecture* — per-feature `draw()`/`promptAnchor()` hooks, biome-exposed slot queries, constraint-based placement — was never built and describes nothing in the code. Implementing "the documented way" from that section will produce the wrong thing; see `visual-v2.md` §10 for what is actually there. |
 | [`visual-v2.md`](visual-v2.md) | How the game *looks*, in the detail v1 deferred: palette, line weights, typography, motion, and the layer stack as built. Explicitly not a final art spec. | **Current** |
 | [`decisions.md`](decisions.md) | Deliberate divergences from the above, with rationale and date. | **Current** |
 

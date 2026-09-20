@@ -75,6 +75,13 @@ most of its scene, and is the colour of its square on the map — one colour, th
 jobs, which is what makes the map legible. Supporting tints live alongside it in
 `src/biomes.js`.
 
+A biome draws things it has no colour of its own for — a tree at the edge of
+the plains, foam where a forest meets the sea. Those come from `BIOME_DEFAULTS`
+at the top of `src/biomes.js`, which every biome inherits and overrides as it
+likes. They used to sit in the renderer as `biome.canopy || "#3f9052"`, which
+put biome colours in two files and let the forest's canopy and its default
+drift a shade apart.
+
 | Biome | Dominant | Character |
 |---|---|---|
 | `dock` | `#5bb0d6` | sea blue: grass, then sand, then open water and the jetty |
@@ -86,9 +93,56 @@ jobs, which is what makes the map legible. Supporting tints live alongside it in
 
 ### Gems
 
-Gem colours live in `src/island.generator.js` as `{ fill, stroke }` pairs. In
-this style `fill` is the body and `stroke` is the **facet tint** drawn inside
-the gem — the outline itself is always `INK`, like everything else.
+`GEM_COLORS` in `src/ink.js` is the whole gem set: six `{ fill, stroke }` pairs,
+one per hue. `fill` is the body and `stroke` is the **facet tint** drawn inside
+the gem — the outline itself is always `INK`, like everything else. The tint is
+not chosen per gem; it is the body lightened by `GEM_FACET_LIGHTEN`, because on
+a brilliant cut the table catches more light than the pavilion by a consistent
+amount.
+
+There is one list because there used to be two — the generator handed out one
+set and the win screen fanned another, so the gems a player collected were not
+the gems they were congratulated with. `tools/gallery.html` now draws the set,
+which is where a gem too close to its neighbour would show.
+
+### Object colours
+
+The body colour of a prop comes from the object palette in `src/ink.js`:
+
+| | | | |
+|---|---|---|---|
+| `RED` `#e8615a` | `ORANGE` `#ef8135` | `AMBER` `#f2a516` | `STRAW` `#f2d79c` |
+| `WOOD` `#a9702f` | `LEAF` `#3f9052` | `STEM` `#4c8b34` | `EMERALD` `#2fa17a` |
+| `SKY` `#5bb0d6` | `PLUM` `#b78ad6` | `ROSE` `#ef8fb4` | `STONE` `#c3cad6` |
+| `CHAR` `#4a4038` | | | |
+
+Plus `SKINS`, four skin tones ordered light to deep, which are deliberate
+rather than derived — these are people, and four of them share the island.
+
+Three rules keep the set small enough to stay a set:
+
+1. **A shade comes from `lighten()` or `darken()`, never from a new literal.**
+   Both live in `ink.js` and both run toward `PAPER` or toward `INK` — never
+   toward another hue, which is what turns a flat-fill scene muddy. An owl is
+   `lighten(WOOD, 0.1)`; a cave sign's post is `darken(STRAW, 0.6)`.
+2. **`READY` and `ALERT` never appear on a prop.** They mean "you typed it" and
+   "that was wrong". A green gem that was literally `READY` would be silently
+   recoloured the next time the completion green was retuned — which is why the
+   gem set uses `EMERALD` and not the state green it used to. A prop may of
+   course be green; just not *that* green. `AMBER` and `HIGHLIGHT` are one
+   colour under two names, deliberately: warm amber is the game's accent, on a
+   flower and on a half-typed prompt alike.
+3. **Never fill a prop with its biome's `dominantColor`.** That is the ground it
+   stands on, and the prop will disappear into it.
+
+`tools/gallery.html` opens with the palette as swatches, each base over the
+range `lighten()` and `darken()` reach, so the answer to "what can I paint this
+with" is a page rather than a grep.
+
+`src/scene-renderer.js` now contains no hex literal at all. Every colour it
+draws with arrives as a token from `ink.js`, a field from `biomes.js`, or a
+`lighten()` / `darken()` of one of those — so a literal appearing in a diff of
+that file is a question worth asking in review.
 
 ---
 
@@ -209,13 +263,18 @@ life and confirms actions; it never asks to be watched.**
 | gems | a sparkle that swells and fades |
 | people | a gentle bob, each on their own phase |
 | kite, ship | sway and rock |
-| owl | blinks about every four seconds |
+| owl | blinks about every eight seconds |
 | moving between nodes | the world scrolls *against* your travel, the way it does when you walk: head north and the land slides down past you while the new place arrives over the top edge |
 | picking something up | a short burst of ink stars at the object |
 | winning | confetti, a bouncing headline |
 
-Timing: node transitions take 0.34s on an ease-in-out. Idle motion runs at
-roughly 0.3–0.5Hz. Nothing loops faster than about 2Hz.
+Timing: node transitions take 0.34s on an ease-in-out.
+
+Idle motion is written as `Math.sin(time * k + seed)`, where **`k` is radians
+per second** — not Hz, which is the easy misreading and gives something
+effectively motionless. Shipped values run `k` = 0.8 to 2.0, or about 0.13 to
+0.32 Hz: the ship rocks at 1.1, a person bobs at 1.6, the explorer breathes at
+2.0. Stay inside that band; nothing should loop faster than about 3 rad/s.
 
 **Reduced motion.** The whole renderer takes `time` in seconds as its only
 animation input. When `prefers-reduced-motion: reduce` is set, `time` is pinned
@@ -261,19 +320,56 @@ glancing at: where you are, the map, what is in your pockets.
 | Concern | File |
 |---|---|
 | tokens, hand-drawn primitives, texture, text | `src/ink.js` |
+| the island map | `src/map-renderer.js` |
 | biome palettes | `src/biomes.js` |
 | the layer stack, biome art, features, prompts | `src/scene-renderer.js` |
 | the explorer | `src/explorer.js` |
-| animation loop, transitions, map, page wiring | `src/main.js` |
+| animation loop, transitions, page wiring | `src/main.js` |
 | page chrome and CSS tokens | `index.html` |
-| every biome and feature on one page | `tools/gallery.html` |
+| the whole art set on one page | `tools/gallery.html` |
 
-`tools/gallery.html` renders the whole art set — biomes, coastlines, typing
-states, the win screen, every feature — from the game's own modules, with no
+`tools/gallery.html` renders the whole art set — the object palette as
+swatches, every gem colour, biomes, coastlines, the map at four stages, typing
+states, the win screen and every feature — from the game's own modules, with no
 build step and no dependencies. Open it after any renderer change; it is far
 faster than hunting for a rock biome in a real run, and it is the closest thing
 the renderer has to a regression test
 ([D4](decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
+
+### Adding a new feature type
+
+Four registries are hand-maintained and there is no code path that will warn
+you about missing one:
+
+1. `src/features.js` — `FEATURE_LIST`, for the id and title.
+2. `src/scene-renderer.js` — `FEATURE_PAINTERS`, or it draws as a `?` disc.
+3. `src/scene-renderer.js` — `PROMPT_ANCHORS`, or its label uses the default
+   spacing, which is too tight for anything tall.
+4. `tools/gallery.html` — `FEATURE_TYPES`, or it never appears in the gallery.
+
+Placement in a real island is the generator's job, separately.
+
+Paint it from the object palette in §2: a base colour from `src/ink.js`, and
+any second tone from `lighten()` or `darken()` of that base. If nothing in the
+set fits, that is a conversation about adding a base, not a reason to reach for
+a literal — a literal is how the palette got away from the code the first time.
+
+The gallery's palette section is the fastest way to answer "what can I paint
+this with": it shows each base over the range those two helpers reach.
+
+### Three things that will bite
+
+Each of these cost an afternoon during the overhaul.
+
+1. **`traceSmooth` on a four-point polygon returns a circle.** The midpoint
+   quadratics have nothing to hold the edges straight. Smoothing needs the
+   dense point list `roughen()` produces, so the two always travel together —
+   if `rough` is 0, use `traceLinear`.
+2. **The static layer is cached per node**, keyed on id, size, biome and which
+   sides are open. Two nodes sharing an id share a background. Real islands
+   have unique ids; hand-built test data often does not.
+3. **Wobble seeded from anything that changes per frame makes the scene
+   shimmer.** Seed from the node or feature id, never from `time`.
 
 ---
 
@@ -284,7 +380,14 @@ the renderer has to a regression test
   that is a v3 conversation.
 - **Sound.** Never discussed. Out of scope.
 - **The explorer's own art.** Her silhouette predates this document and was left
-  alone on purpose; only her outline colour, facing and bob are new.
+  alone on purpose; only her outline colour, facing and bob are new. Her palette
+  is hers — brighter than anything in §2 and deliberately outside it, because
+  she is the one character and should not read as scenery. Two loose ends sit
+  here: her colours are defaults inside `src/explorer.js` rather than tokens,
+  and `src/map-renderer.js` overrides them with muted ones, so the explorer on
+  the map is not quite the explorer in the scene. Neither is a bug anyone has
+  complained about; both are unrecorded, which is why they are written down
+  here.
 
 ---
 

@@ -81,6 +81,27 @@ while features/prompt layout stay the same.
 
 ## Feature metadata
 
+> **Never built.** This section describes an architecture the code does not
+> have, and has not had at any point. It is kept because the *concerns* are
+> real and the reasoning is still worth reading — but a reader who implements
+> "the documented way" from here will produce something that fits nothing.
+>
+> What is actually there, all in `src/scene-renderer.js`:
+>
+> | This section | The code |
+> |---|---|
+> | a `draw()` hook on each feature | `FEATURE_PAINTERS`, a type → painter registry |
+> | a `promptAnchor(slot)` function | `PROMPT_ANCHORS`, a type → `{ below, above, prefer }` table |
+> | biomes exposing available slots | `SLOT_POSITIONS`, five fixed positions, identical in every biome |
+> | constraint satisfaction over slots | the generator writes a `slotId` onto the feature from a fixed list |
+> | a fallback stack when no slot fits | nothing; slots are assigned, not negotiated |
+>
+> Collision handling does exist, but for prompt *labels* rather than feature
+> slots: labels claim rectangles and dodge each other. See `visual-v2.md` §10.
+>
+> Whether to build this or cut it is still open — `../tasks.md` tracks it. This
+> note only stops the section reading as a specification in the meantime.
+
 Features describe both gameplay objects and their visual footprint. Each feature entry
 defines:
 

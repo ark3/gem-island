@@ -5,13 +5,42 @@
 // tints its scene is painted from. Per `docs/visual-v2.md` every value here is
 // a solid colour: nothing in this file may be used to build a gradient.
 
-const FALLBACK_BIOME = Object.freeze({
-  id: "fallback",
-  title: "Default",
-  dominantColor: "#cbb994",
+// Every biome inherits these, and overrides the ones it cares about. A biome
+// draws things it has no colour of its own for — a tree at the edge of the
+// plains, foam where a forest meets the sea — and the default is what it uses.
+// These lived in `scene-renderer.js` as `biome.canopy || "#3f9052"` until Sept
+// 2026, which put biome colours in two files and let two of them drift apart.
+const BIOME_DEFAULTS = Object.freeze({
   ground: "#cbb994",
   groundDeep: "#b6a47f",
   detail: "#8e7c5b",
+  water: "#5bb0d6",
+  waterDeep: "#3d93bd",
+  foam: "#fdfbf2",
+  sand: "#f3d79c",
+  sandDeep: "#e6c079",
+  sandDetail: "#c79a4e",
+  wood: "#c98d52",
+  woodDeep: "#9c6733",
+  canopy: "#3f9052",
+  canopyDeep: "#2d7140",
+  trunk: "#9c6733",
+  moss: "#7fa86a",
+  stone: "#b7bdc9",
+  stoneDeep: "#b7bdc9",
+  bloom: "#f5c542",
+  bloomAlt: "#ef8fb4",
+  soil: "#b47c42",
+  crop: "#8fbf52",
+  cropRipe: "#f0c64a",
+  tuft: "#8faa55",
+});
+
+const FALLBACK_BIOME = Object.freeze({
+  ...BIOME_DEFAULTS,
+  id: "fallback",
+  title: "Default",
+  dominantColor: "#cbb994",
 });
 
 const BIOME_LIST = [
@@ -87,7 +116,7 @@ const BIOME_LIST = [
   },
 ];
 
-const BIOMES = new Map(BIOME_LIST.map((biome) => [biome.id, { ...biome }]));
+const BIOMES = new Map(BIOME_LIST.map((biome) => [biome.id, { ...BIOME_DEFAULTS, ...biome }]));
 
 export function getBiomeById(id) {
   if (id && BIOMES.has(id)) {
@@ -103,5 +132,5 @@ export function resolveNodeColor(node) {
 }
 
 export function listBiomes() {
-  return BIOME_LIST.map((biome) => ({ ...biome }));
+  return BIOME_LIST.map((biome) => ({ ...BIOME_DEFAULTS, ...biome }));
 }

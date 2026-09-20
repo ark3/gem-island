@@ -43,7 +43,10 @@ resets completely when finished.
 - **No build step.** Do not introduce bundlers (Webpack/Vite) or transpilers.
 - **Imports:** always include the `.js` extension, e.g.
   `import { x } from "./utils.js"`.
-- **Run the game:** open `index.html` in a browser. There is nothing to build.
+- **Run the game:** serve the folder and open `index.html` — for example
+  `npx http-server -p 8765 -c-1 .`. There is nothing to build, but `index.html`
+  and `tools/gallery.html` load ES modules, which browsers refuse over
+  `file://`, so opening the file directly fails.
 
 **Testing:**
 
@@ -59,6 +62,46 @@ node --test tests/engine.test.js   # single file
   testable in Node (no DOM or Canvas references).
 - Tests use seeded random for deterministic generation — see
   `tests/helpers/random.js`.
+
+**Working on visuals:**
+
+Look at the change. Every visual bug found in the September 2026 overhaul was
+found by looking, and two of them were invisible in a normal playthrough.
+
+1. **Open `tools/gallery.html` first.** It renders every biome, coastline,
+   feature, map state, typing state and the win screen from the game's own
+   modules, on one page, with no setup. Most visual work needs nothing else.
+2. **Drive the real game** for the things the gallery cannot show: page chrome
+   and layout, the node transition, and frame rate.
+   - Serve the folder first — `npx http-server -p 8765 -c-1 .`. ES modules do
+     not load over `file://`, so opening `index.html` directly will fail.
+   - Claude Code web sessions have Chromium and Playwright preinstalled:
+     `require` Playwright from `/opt/node22/lib/node_modules/` and launch with
+     `executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"`.
+     Check the `chromium-*` directory name; the build number changes.
+   - For a reproducible island, override `Math.random` in `addInitScript`
+     before the page loads — the seed is drawn from it at boot.
+   - To activate a prompt, send the characters **then Enter**; a match alone
+     does nothing. `document.title` carries the current node, which is the
+     cheapest way to detect that a move landed.
+   - Reduced motion is verifiable: grab two canvas frames a second apart while
+     idle and assert they are byte-identical.
+3. **Prove a refactor changed nothing** by diffing the gallery against the
+   commit you started from. `git archive HEAD | tar -x -C <tmp>` and serve that
+   on a second port, then load both galleries and compare
+   `canvas.toDataURL()` per `figcaption`.
+   - Compare **canvas contents, not page screenshots**. An element screenshot
+     moves when anything above it changes height, and a half-pixel shift lights
+     up every outline on the page — the September 2026 palette work spent a
+     round chasing a 17% "regression" that was entirely sub-pixel layout.
+   - `makeIsland()` in the gallery numbers islands in call order, and that
+     number seeds the hand-drawn wobble. Adding a section above an existing one
+     reseeds everything below it, which looks exactly like a rendering change.
+     Populate new sections at the end of the module.
+
+**Do not add Playwright to the repository.** No `package.json`, no lockfile, no
+CI job — that decision is still open and is tracked in `tasks.md`. Use the
+preinstalled copy from a scratch directory and leave nothing behind.
 
 ## 4. Architecture
 
@@ -79,6 +122,8 @@ The codebase follows a **functional core, imperative shell** pattern.
 
 - **`src/main.js`** — DOM/Canvas rendering, keyboard input, game loop. Connects
   the pure logic to the browser.
+- **`src/map-renderer.js`** — the island map. Split out of `main.js` so it can
+  be reviewed in `tools/gallery.html` without playing a real game.
 - **`src/scene-renderer.js`** — canvas scene drawing, extracted from `main.js`.
   Paints the static layers of a node once into an offscreen canvas and animates
   everything above them, which is why a fully animated scene is cheap.

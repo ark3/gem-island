@@ -1,4 +1,9 @@
 import { getBiomeById, listBiomes } from "./biomes.js";
+// The gem colours live with the rest of the palette. A feature carries
+// `{ fill, stroke }`: `fill` is the body, `stroke` the lighter tint of the
+// facet drawn inside it. The outline itself is always INK — see
+// `docs/visual-v2.md`.
+import { GEM_COLORS } from "./ink.js";
 import { CARDINAL_DIRECTIONS, coordinateKey, createMovementActionsForNode } from "./island-utils.js";
 import { QUEST_CATALOG } from "./quest-catalog.js";
 
@@ -12,19 +17,6 @@ export const DEFAULT_GRID_BOUNDS = Object.freeze({
 export const MIN_SURFACE_NODES = 20;
 export const MAX_SURFACE_NODES = 30;
 const MIN_GEMS = 1;
-// `fill` is the gem's body; `stroke` is the lighter tint of the facet drawn
-// inside it (the table). The outline itself is always INK — see
-// `docs/visual-v2.md`. These tints were originally near-white because they were
-// outline colours; as facet fills they were washing the gem out, so they are
-// now a lighter version of the body rather than a paler one.
-const GEM_COLORS = [
-  { fill: "#f472b6", stroke: "#f8a8d2" }, // pink (original)
-  { fill: "#60a5fa", stroke: "#9cc7fc" }, // blue
-  { fill: "#4ade80", stroke: "#8febb0" }, // green
-  { fill: "#c084fc", stroke: "#d8b3fd" }, // purple
-  { fill: "#facc15", stroke: "#fcdf6e" }, // yellow
-  { fill: "#f97316", stroke: "#fba86f" }, // orange
-];
 const SURFACE_BIOMES = listBiomes().filter((biome) => biome.id !== "dock");
 const SAND_BIOME_ID = "sand";
 const FEATURE_SLOT_IDS = ["southwest", "northeast", "northwest", "southeast", "center-low"];

@@ -121,6 +121,78 @@ seams for exactly this work.
 - [x] Extract scene rendering into a standalone module (`8a4c114`)
 - [x] Add `src/ink.js` and redraw everything through it (visual overhaul, above)
 
+## Track: Visual Iteration Support
+
+Added 2026-09-20, after the overhaul merged, so the next round of visual work
+does not start by rebuilding what this one figured out.
+
+- [x] Extract the map into `src/map-renderer.js`. It was buried in `main.js`
+      and could only be seen by playing far enough to discover nodes.
+- [x] `tools/gallery.html` covers the map at four stages of discovery, which is
+      where the completion check's contrast problem would have been caught.
+- [x] Record how to iterate on visuals in `AGENTS.md`: gallery first, then how
+      to drive the real game headlessly with the preinstalled Playwright,
+      without adding a dependency to the repo.
+- [x] Record the three renderer gotchas in `docs/visual-v2.md` §10.
+- [x] Cold-read test of the documentation, 2026-09-20: a reader with no context
+      was asked to work out how to draw a new feature using only the repo. It
+      got the outline colour, weights, no-gradients rule, motion contract,
+      seeding rule and the gallery right — and found six defects, now fixed:
+      the owl's blink rate was documented as 4s when the code gives 7.9s; the
+      idle-motion band was stated in Hz when the code uses radians/second, and
+      the numbers did not match either way; `CLAUDE.md` and `AGENTS.md` both
+      said to open `index.html` directly, which ES modules make impossible; and
+      the untested-coverage figure disagreed with `decisions.md`.
+- [x] Documented that adding a feature type means touching four
+      hand-maintained lists, none of which fails loudly when missed.
+- [x] **Object palette closed, 2026-09-20.** Prop body colours were hex
+      literals inside each painter — no tokens, no rule, so every new feature
+      invented its own. `src/ink.js` now holds thirteen base colours plus
+      `SKINS`, and `lighten()` / `darken()` derive every shade from them, always
+      toward paper or ink and never toward another hue. All 50 literals in
+      `scene-renderer.js` are gone; the only hex left in that file is biome
+      fallbacks. Rules and the set are in `docs/visual-v2.md` §2, and the
+      gallery opens with the palette as swatches.
+  - [x] Two defects the exercise exposed, both fixed: the generator and the win
+        screen carried **different gem colour sets**, so the gems a player
+        collected were not the gems they were congratulated with; and one gem
+        body was literally `READY`, the completion green, so retuning the state
+        colour would have silently retuned the gems. One list now lives in
+        `ink.js` and uses `EMERALD`.
+  - [x] Verified by diffing canvas contents between `HEAD` and the working tree
+        figure by figure — the first attempt diffed page screenshots and was
+        swamped by a sub-pixel layout shift. Only the ship hull, the NPC and the
+        win screen moved perceptibly; everything else was under a delta of 30.
+- [x] **Biome fallbacks moved into `biomes.js`, 2026-09-20.** Eighteen
+      `biome.canopy || "#2d7140"`-style defaults lived in the renderer, putting
+      biome colours in two files — and the forest's canopy had already drifted a
+      shade from its own default. They are now `BIOME_DEFAULTS`, which every
+      biome inherits and overrides as it likes. Two were not even guarded and
+      simply hardcoded a biome's colour; those are `tuft` and `sandDetail` now.
+      `src/scene-renderer.js` contains no hex literal at all, so one appearing
+      in a diff of that file is now a question worth asking in review. Verified
+      byte-identical: every figure in the gallery matched the previous commit
+      exactly.
+- [?] **Still open, but no longer a trap:** `rendering-v1.md`'s feature
+      architecture — per-feature `draw()`/`promptAnchor()` hooks, biome slot
+      queries, constraint-based placement — was never built. Of the three
+      options here (build it, cut it, mark it), the third is done: the section
+      now opens with a note saying it describes nothing, and a table mapping
+      each idea in it to what the code has instead. **The design call is
+      yours** — the concerns it raises are real, and the code handles them more
+      crudely (five fixed slots, identical in every biome, assigned by the
+      generator rather than negotiated). Worth building only if feature
+      placement starts looking cramped or repetitive.
+- [x] **Recorded, 2026-09-20.** `visual-v1.md` says completed non-movement
+      actions "disappear entirely"; [D2](docs/decisions.md) said completion and
+      removal are separate while citing only `initial-full-design.md`. D2 now
+      names v1 under **Narrows**, and says what the code actually does: the
+      prompt is always dropped, the feature stays unless flagged `removable`.
+      A gem is taken and gone; a signpost you have read keeps standing there.
+      The conflict was narrower than the entry above assumed — v1 was
+      describing actions and reads as though it described the scene — but it
+      was real and unrecorded, which is the thing this repo's rule is for.
+
 ## Track: Infrastructure and Test Coverage
 
 Added 2026-09-18 after a repo review.
@@ -132,7 +204,7 @@ Added 2026-09-18 after a repo review.
       cancels superseded in-flight runs
 - [?] Add a headless browser smoke test to CI. Playwright can drive the real
       game — loading the page, typing prompts, asserting no console errors —
-      covering the ~60% of `src/` with no tests today
+      covering the ~65% of `src/` with no tests today
       ([D4](docs/decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
       **Blocked on a decision:** Playwright would be this repo's first
       dependency and would require a `package.json`, breaking the
