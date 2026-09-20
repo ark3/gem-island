@@ -66,7 +66,13 @@ when the integration lands** — until then the code does not yet diverge.
       starts easy and climbs quickly.
 - [x] `scripts/analyze-difficulty.mjs` — prints distributions and sample
       sessions, for tuning weights against real output.
-- [ ] **Integrate.** Wire timing capture into the typing engine, hold the
+- [x] `src/typing-recorder.js` — turns keyboard events into timing samples.
+      Pure reducer between the shell and the engine: the shell owns the clock,
+      the engine keeps matching as its only job. `keyCount` is the matched
+      prompt's length, not the number of keys pressed, so a correction reads as
+      slowness instead of being normalised away.
+- [ ] **Integrate.** Drive the recorder from `main.js` (`promptsShown` on
+      render, `keyPressed` on each edit, `completed` on activation), hold the
       estimate in session state, and select prompts from the vocabulary.
       Removes the tier machinery (`src/prompt-lists.js`, the `?tier=`
       parameter) and rewrites D1's reversal section, which currently describes

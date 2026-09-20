@@ -173,6 +173,9 @@ The codebase follows a **functional core, imperative shell** pattern.
   finger movement and transitions. Holds the tunable weights.
 - **`src/prompt-vocabulary.js`** — scores the vocabulary once, then draws a set
   of prompts at a chosen difficulty.
+- **`src/typing-recorder.js`** — turns keyboard events into one timing sample
+  per completed prompt. Pure reducer; the shell reads the clock and passes
+  timestamps in, so no timing rule lives in the untested shell.
 - **`src/typing-estimate.js`** — turns typing speed into the difficulty target.
   Pure reducer; nothing it measures is ever shown to the player.
 - **`src/data/`** — generated vocabulary data. Do not hand-edit; regenerate with
