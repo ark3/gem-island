@@ -17,7 +17,8 @@ the time, the entry says so explicitly rather than inventing one.
 ## D1 — Typing prompts are single letters, not words
 
 - **Date:** 2026-01-01 (`3cb2233`, "Switch to single-letter typing prompts")
-- **Status:** Active, **under review** as of 2026-09-18
+- **Status:** **Reversed** on 2026-09-19. Retained in full below, because the
+  reasoning is what makes the reversal legible.
 - **Contradicts:** `initial-full-design.md` — "Visible actions on the screen each
   have an associated prompt (**common words**, not semantically tied to the
   action)."
@@ -43,8 +44,29 @@ train key-finding, not typing. `createPromptTrainer({ prompts: [...] })` already
 accepts a word list and weights entries evenly, so the plumbing for a reversal
 exists and is unused.
 
-**If this is reversed**, update this entry rather than deleting it, and note
-that `initial-full-design.md` becomes accurate again.
+### Reversal, 2026-09-19
+
+Prompts are words, not single letters. `initial-full-design.md` is accurate
+again on this point.
+
+**What changed the decision:** the player is learning touch typing at school
+and is working through the home row. Key-finding speed is no longer the skill
+being built, so pacing prompts to it no longer serves her. Single letters
+cannot practise touch typing at all, because there is no word shape to learn.
+
+**How words are chosen** is a separate decision — see
+[D6](#d6--prompt-difficulty-adapts-to-typing-speed), which supersedes the first
+implementation of this reversal.
+
+> **A transitional implementation, now removed.** The first version of this
+> reversal shipped four vocabulary *tiers* in `src/prompt-lists.js`, selectable
+> with a `?tier=` parameter. That approach was rejected: the difficulty scoring
+> already favours the keys taught first, so tiers restate the curriculum
+> somewhere it has to be kept in sync, and impose steps where a gradient is
+> wanted. `prompt-lists.js` and `prompt-trainer.js` were deleted when D6 was
+> integrated on 2026-09-20; the game now serves the scored vocabulary. D6's
+> rejected-alternatives table keeps the full reasoning, because the tier idea
+> is an obvious one to have again.
 
 ---
 
@@ -163,3 +185,149 @@ developer tool. A webfont buys that for two `<link>` tags.
 **If this is reversed**, drop the `<link>` tags and the `"Baloo 2"` entry from
 both `FONT_STACK` in `src/ink.js` and `--font` in `index.html`; nothing else
 depends on it.
+---
+
+## D6 — Prompt difficulty adapts to typing speed
+
+- **Date:** 2026-09-19
+- **Status:** **Active — integrated 2026-09-20.** `main.js` serves the scored
+  vocabulary and adapts to measured typing pace. The tier machinery it replaced
+  (`prompt-lists.js`, `prompt-trainer.js`, `?tier=`) is deleted.
+
+  The crossing below is therefore live, not prospective: the game now measures
+  typing speed and varies difficulty by it.
+- **Crosses:** `design-v1.md:276`, "Explicit non-goals (v1)", first item —
+  *"Typing speed measurement or adaptive difficulty."*
+
+Crossing that non-goal is deliberate. It was the right call when a single
+keypress was itself the challenge: there was nothing for adaptation to act on.
+Now that prompts are words, word selection has a difficulty axis, and the
+non-goal has outlived its reason.
+
+### The design
+
+**Difficulty is a property of the string**, computed in
+`src/typing-difficulty.js` from which fingers move and how: per-key cost by
+finger and displacement (down harder than up, harder than sideways),
+per-transition cost (same finger on different keys is worst, a repeated key is
+cheap, alternating hands is free), averaged per keystroke. Small length and
+familiarity terms sit on top. Averaging rather than summing is what keeps
+length the least influential term — summing would make it dominate by
+arithmetic alone.
+
+**The vocabulary is never restricted by which keys have been taught.** All of
+it is always available; the scoring decides what surfaces. This works because
+a touch-typing curriculum teaches keys in roughly the order this model ranks
+them — both follow finger comfort — so a low target naturally yields the keys
+a beginner already knows. At the easiest setting, selection draws from `d`,
+`f`, `j` and `k` without being told they are the ones she has learned.
+
+**The whole visible set moves together.** Every prompt on screen sits near one
+target difficulty, so choosing among them is a choice about where to go in the
+game, never about how hard to work — and the timing sample stays unbiased,
+since whichever prompt gets typed was drawn from the same place.
+
+**Measurement is invisible and lives in `src/typing-estimate.js`.** The signal
+is the average interval between keystrokes; the delay before the first
+keystroke counts for a little, capped, because it also contains reading the
+screen, deciding where to go and looking at the scenery. Corrections are
+included rather than filtered out — fumbling is exactly what should pull
+difficulty down. The target rises faster than it falls, so one distracted word
+does not undo a good run. Nothing is displayed: no timer, no score, no
+readout. The only observable effect is which words appear next.
+
+### How it is wired, 2026-09-20
+
+The order matters, and it is the one thing a reader of `main.js` could get
+wrong: **sample, then estimate, then select, then show.**
+
+1. `render()` draws the whole visible set at `estimate.target` and then calls
+   `promptsShown`. Rendering is what re-rolls the prompts, so rendering is what
+   starts the clock.
+2. `handleKeydown` calls `keyPressed` for every edit that actually changes the
+   buffer — characters and backspaces alike. `TypingEngine.append` and
+   `.backspace` return whether they changed anything, so a backspace on an
+   empty buffer or a character past the 15-char cap is not mistaken for typing.
+   Enter never extends the window.
+3. `handleAction` calls `completed` **first**, before `applyAction` and before
+   the render that re-rolls. The sample therefore describes the word she
+   actually typed, and the new target is in place before the next set is drawn.
+
+The shell reads the clock — that is I/O — and passes timestamps in. Every rule
+about what the numbers mean stays in `typing-recorder.js` and
+`typing-estimate.js`, which are pure and tested. `main.js` has no test coverage
+by [D4](#d4--canvas-and-dom-code-is-intentionally-untested), so it holds as
+little judgement as possible.
+
+**The estimate survives a new island but not a reload.** Within one page load
+she is the same typist, and re-climbing from the starting target after every
+win would waste the first minutes of each island. Reloading is how to start
+over, which is cheap and needs no UI.
+
+**The only trace of the measurement is a `console.debug` line per completed
+prompt**, giving the word, the pace and the new target. Nothing reaches the
+screen — no timer, no score, no readout. The console line exists because
+calibrating `fastIntervalMs` / `slowIntervalMs` against a real session is an
+open task with nothing to work from otherwise.
+
+Verified in a real browser before landing: typing fast raised the target 1.30 →
+2.50 over eight prompts and the screen moved from `fl, fjj, djs, ksl` to `up,
+david, mail, forms`; typing slowly brought it back down; a deliberately fumbled
+word scored 246ms/key against the 120ms/key it was typed at.
+
+### Rejected alternatives
+
+Recorded because each is a plausible idea that was tried and set aside. Please
+read the reasons before proposing any of them again.
+
+| Rejected | Why |
+|---|---|
+| **Difficulty tiers** (`home-letters`, `home-words`, …) | Redundant. The scoring already favours the keys taught first, so tiers restate the curriculum in a second place that must be kept in sync, and impose steps where a gradient is wanted. This was built first and is being removed. |
+| **Restricting the vocabulary to keys already taught** | Same reason, and it fails on its own terms: she can type the keys she has not formally learned, just less comfortably. It is a gradient, not a cliff. |
+| **Per-key or per-letter observed tracking** | Unnecessary. The static model already tilts toward comfortable keys; learning per-key costs adds state and complexity to reach a place the geometry already reaches. |
+| **A runtime vocabulary switch (`?tier=…`)** | The target difficulty is the only control needed, and it sets itself. |
+| **Persisting the estimate between sessions** | Deliberately not done. Adaptation converges in about ten prompts, which makes persistence unnecessary; persistence for web apps is solved elsewhere in the owner's projects and is not wanted here. |
+| **A spread of difficulties within one visible set** | Would couple the difficulty she gets to the destination she wants, and would bias the timing sample by letting her self-select the easy option. |
+| **Using her word choice as a difficulty signal** | She plays for the game. Her choices are driven by where she wants to go, not by which word looks easier, so the signal would be noise. |
+
+### Known weaknesses
+
+- **The weights are reasoned, not measured.** `fastIntervalMs` and
+  `slowIntervalMs` in `typing-estimate.js` are guesses at a seven-year-old's
+  pace and should be the first thing corrected against a real session.
+- **The frequency corpus is web-derived.** It has no `dad` at all while
+  ranking `administration` highly, so the familiarity term currently measures
+  the internet's familiarity rather than hers. An age-of-acquisition or
+  early-reader source would fit far better.
+- **Nonsense dominates where she will actually play.** A simulated session
+  (`scripts/simulate-session.mjs`) settles the target near 1.9, and at that
+  level about **86%** of prompts are nonsense rather than real words — the
+  pool fills everything below roughly 2.4 precisely because real words do not
+  live there. By target 2.5 it is 30%, by 2.8 it is 3%. The model is behaving
+  correctly; whether a child who can read enjoys a screen of `aaf, gha, fsg`
+  is a separate question. Related: around 2.2 a single screen mixes registers
+  — `hla`, `side`, `gf`, `digital` together.
+
+  **Corrected 2026-09-20: that 86% is an artifact of the simulated player, not
+  a property of the design.** The player's pace is proportional to the full
+  score, familiarity term included, so the model assumes a nonsense string
+  costs her exactly what the familiarity weight guesses it costs. The guess is
+  then read back out as a finding. Holding everything else fixed and changing
+  only that assumption, she settles at 1.93 with 86% nonsense at +1.0/key, and
+  at 2.67 with 18% nonsense at +0.35/key — if nonsense is easier for her than
+  the weight assumes, she climbs past it and the problem self-corrects.
+
+  The familiarity weight is still the lever, but it runs the opposite way to
+  the obvious guess: *lowering* it yields more real words, because it drops
+  nonsense below her band and pulls mid-frequency words down into it. At
+  weight 0 the band near 1.9 holds 396 real words and 2 nonsense; at 2.5 the
+  whole band collapses to 5 entries and selection degenerates to repeating
+  them. **Resolved: do not pre-tune.** The answer ranges over 7%-86% on a
+  number only a real session can supply, and no amount of simulation narrows
+  it. Left at 1.0 until she plays.
+- **The rise/fall asymmetry was checked and is safe.** Rising 0.15 and falling
+  0.08 is a ratchet in principle: noisy input could drift the target upward
+  without any real improvement. Simulation shows it self-limits, because a
+  higher target yields slower typing and so fewer "fast" readings. It settles
+  in a band (1.55–2.39 over 200 prompts) rather than climbing to the ceiling.
+  Re-run the simulation after changing any weight or threshold.

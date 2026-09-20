@@ -12,7 +12,27 @@ a procedurally generated island by typing visible word prompts to activate
 actions (move, pick up gems, talk to NPCs). Each session lasts 5–15 minutes and
 resets completely when finished.
 
-## 2. Authority and documentation
+## 2. Working agreements
+
+How the owner of this project wants to be worked with. These are preferences,
+not deductions — follow them.
+
+- **Discuss design before building it.** Context given in conversation is not
+  authorization to implement. When a design choice is open, put the options and
+  a recommendation, and wait. A round spent agreeing is cheaper than a round
+  spent undoing, and this file exists partly because that lesson was learned the
+  expensive way: a tier-based prompt system was built without discussion, then
+  removed (`docs/decisions.md`, D6).
+- **Number your questions** when there is more than one, so answers can refer to
+  them by number.
+- **Check claims that are checkable.** Counts, distributions, whether a source
+  exists, whether a fix actually fixes anything — measure it rather than
+  reasoning about it, and say which you did.
+- **When a decision is reversed, record the reversal; do not delete the
+  original.** The reasoning is what makes the new decision legible. Rejected
+  alternatives belong in the decision log too, so they stay rejected.
+
+## 3. Authority and documentation
 
 - **Design intent** lives in [`docs/`](docs/README.md). Start with
   [`docs/README.md`](docs/README.md), which indexes every document and says what
@@ -36,7 +56,7 @@ resets completely when finished.
 > now actively misleading — the shipping prompt behaviour contradicts the design
 > docs on purpose. See `docs/decisions.md`, entry D1.
 
-## 3. Operational directives
+## 4. Operational directives
 
 **Environment:** native browser ES modules.
 
@@ -103,7 +123,7 @@ found by looking, and two of them were invisible in a normal playthrough.
 CI job — that decision is still open and is tracked in `tasks.md`. Use the
 preinstalled copy from a scratch directory and leave nothing behind.
 
-## 4. Architecture
+## 5. Architecture
 
 The codebase follows a **functional core, imperative shell** pattern.
 
@@ -139,10 +159,32 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **`src/quest-catalog.js`** — quest definitions (discover and collect types)
 - **`src/features.js`** — visual feature rendering (gems, people, ship)
 - **`src/explorer.js`** — player character art
-- **`src/prompt-service.js`** — assigns typing prompts to actions
-- **`src/prompt-trainer.js`** — chooses which prompt to serve next
+- **`src/prompt-service.js`** — draws the whole on-screen set of prompts at one
+  difficulty, and remembers what was shown recently
 - **`src/island-utils.js`**, **`src/island.manual.js`** — shared helpers and a
   hand-built island used by tests
+
+**Typing difficulty** (pure; wired into the game via `main.js` — see
+`docs/decisions.md`, D6):
+
+- **`src/typing-difficulty.js`** — scores how hard a string is to type, from
+  finger movement and transitions. Holds the tunable weights.
+- **`src/prompt-vocabulary.js`** — scores the vocabulary once, then draws a set
+  of prompts at a chosen difficulty.
+- **`src/typing-recorder.js`** — turns keyboard events into one timing sample
+  per completed prompt. Pure reducer; the shell reads the clock and passes
+  timestamps in, so no timing rule lives in the untested shell.
+- **`src/typing-estimate.js`** — turns typing speed into the difficulty target.
+  Pure reducer; nothing it measures is ever shown to the player.
+- **`src/data/`** — generated vocabulary data. Do not hand-edit; regenerate with
+  `node scripts/build-vocabulary.mjs`.
+- **`scripts/`** — maintenance tools, not a build step. The game never needs
+  them. `build-vocabulary.mjs` regenerates `src/data/`;
+  `analyze-difficulty.mjs` prints score distributions and sample sessions for
+  tuning weights against real output; `simulate-session.mjs` plays a whole
+  session against a simulated player, so pathologies turn up there rather than
+  in front of a child. Treat its player model as the guess it is — see D6's
+  2026-09-20 correction for what happens when you forget that.
 
 **Tools:**
 
@@ -152,7 +194,7 @@ The codebase follows a **functional core, imperative shell** pattern.
   thing the renderer has to a regression check
   ([`docs/decisions.md`](docs/decisions.md), D4).
 
-## 5. Key concepts
+## 6. Key concepts
 
 - **Nodes** — grid-based locations the player navigates between. Each has a
   biome, position, features and actions.
@@ -164,7 +206,7 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **Quests** — emerge from NPC dialog that changes with game state. Two types:
   discover (visit a location) and collect (gather items).
 
-## 6. Conventions
+## 7. Conventions
 
 - **Derived state over stored state.** Calculate `isCompleted` by checking
   conditions; do not store a boolean.

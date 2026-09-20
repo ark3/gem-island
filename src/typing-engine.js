@@ -14,16 +14,25 @@ export class TypingEngine {
     this.emitChange();
   }
 
+  /**
+   * Both edits report whether they changed the buffer. A keystroke that
+   * changed nothing -- backspace on an empty buffer, a character past the
+   * cap -- is not typing, and the caller measuring pace needs to tell the
+   * difference. Returning it here keeps that judgement out of the shell
+   * without giving this class any timing rules of its own.
+   */
   append(char) {
-    if (this.buffer.length >= MAX_BUFFER_LENGTH) return;
+    if (this.buffer.length >= MAX_BUFFER_LENGTH) return false;
     this.buffer += char;
     this.emitChange();
+    return true;
   }
 
   backspace() {
-    if (!this.buffer.length) return;
+    if (!this.buffer.length) return false;
     this.buffer = this.buffer.slice(0, -1);
     this.emitChange();
+    return true;
   }
 
   reset() {
