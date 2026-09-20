@@ -90,34 +90,22 @@ Gem colours live in `src/island.generator.js` as `{ fill, stroke }` pairs. In
 this style `fill` is the body and `stroke` is the **facet tint** drawn inside
 the gem — the outline itself is always `INK`, like everything else.
 
-### Object colours — a known gap
+### Object colours — not closed
 
-There is **no token, list or rule for the body colour of a prop**. The palette
-above closes the ink, paper, state, biome and gem colours, and stops. Every
-feature's body colour is a bare hex literal inside its own painter in
-`src/scene-renderer.js` — 51 distinct literals in the file, in no registry.
+The palette above closes ink, paper, state, biome and gem colours. It does
+**not** cover the body colour of a prop. Those are hex literals inside each
+painter in `src/scene-renderer.js`, with no shared tokens behind them.
 
-Until that is fixed, the convention holding the art together is reuse. Every
-literal used three or more times, with its count:
+That is a gap, not a design. Until it is closed:
 
-| | Colour | Uses | Seen on |
-|---|---|---|---|
-| 🟥 | `#e8615a` | 7 | flags, gem bodies, confetti |
-| 🟨 | `#f2d79c` | 6 | sign boards, sails, sandcastle |
-| 🟦 | `#5bb0d6` | 6 | kite, tractor glass, confetti |
-| 🟧 | `#f2a516` | 5 | flower petals, owl beak |
-| 🟩 | `#3f9052` | 5 | tractor body, confetti |
-| 🟫 | `#a9702f` | 4 | posts, masts, pinecone |
-| 🟪 | `#b78ad6` | 3 | confetti, NPC clothing |
-| 🟤 | `#b07d44` | 3 | owl |
-| 🟢 | `#4c8b34` | 3 | stems and leaves |
+- Reuse a colour already on screen rather than adding a new one.
+  `grep -o '#[0-9a-f]\{6\}' src/scene-renderer.js | sort | uniq -c | sort -rn`
+  shows what is in use and how often — read it from the code, which cannot go
+  stale, rather than from a list here, which would.
+- Never fill a prop with the biome's `dominantColor`. That is the land it
+  stands on, and the prop will disappear into it.
 
-Two more recur but are **not** prop colours — `#cbb994` (4) and `#c79a4e` (3)
-appear almost entirely as `biome.ground ||` / `biome.detail ||` fallbacks for a
-biome missing a tint. Do not read them as part of the object palette.
-
-Pick from the table before inventing a colour, and never fill a prop with the
-biome's `dominantColor` — that is the land it stands on.
+Closing this properly is tracked in `../tasks.md`.
 
 ---
 

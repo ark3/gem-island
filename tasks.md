@@ -143,9 +143,16 @@ does not start by rebuilding what this one figured out.
       the numbers did not match either way; `CLAUDE.md` and `AGENTS.md` both
       said to open `index.html` directly, which ES modules make impossible; and
       the untested-coverage figure disagreed with `decisions.md`.
-- [x] Two gaps the cold read found, now documented: prop body colours were in
-      no registry (51 hex literals in `scene-renderer.js`), and nothing said
-      that adding a feature type means touching four hand-maintained lists.
+- [x] Documented that adding a feature type means touching four
+      hand-maintained lists, none of which fails loudly when missed.
+- [ ] **Close the object palette.** Prop body colours are hex literals inside
+      each painter — no tokens, no rule, so every new feature invents its own.
+      `visual-v2.md` §2 closes every other colour in the game and says this one
+      is open. Closing it means choosing a small set of object colours, putting
+      them in `ink.js` beside the other tokens, and moving the painters onto
+      them. A first attempt instead recorded a frequency table of the existing
+      literals, which was deleted: it described the symptom as though it were
+      the rule, and went stale the moment a feature was added.
 - [?] **Open, raised by the cold read:** `rendering-v1.md`'s feature
       architecture — per-feature `draw()`/`promptAnchor()` hooks, biome slot
       queries, constraint-based placement — was never built. `docs/README.md`
