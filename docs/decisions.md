@@ -255,6 +255,18 @@ read the reasons before proposing any of them again.
   ranking `administration` highly, so the familiarity term currently measures
   the internet's familiarity rather than hers. An age-of-acquisition or
   early-reader source would fit far better.
-- **The transition band mixes registers.** Around a target of 2.3, a single
-  screen can show `hla`, `side`, `gf` and `digital` together. Not wrong by the
-  model, but it may read oddly; the familiarity weight is the lever.
+- **Nonsense dominates where she will actually play.** A simulated session
+  (`scripts/simulate-session.mjs`) settles the target near 1.9, and at that
+  level about **86%** of prompts are nonsense rather than real words — the
+  pool fills everything below roughly 2.4 precisely because real words do not
+  live there. By target 2.5 it is 30%, by 2.8 it is 3%. The model is behaving
+  correctly; whether a child who can read enjoys a screen of `aaf, gha, fsg`
+  is a separate question, and the familiarity weight is the lever. **Open:**
+  pre-adjust it, or let a real session decide. Related: around 2.2 a single
+  screen mixes registers — `hla`, `side`, `gf`, `digital` together.
+- **The rise/fall asymmetry was checked and is safe.** Rising 0.15 and falling
+  0.08 is a ratchet in principle: noisy input could drift the target upward
+  without any real improvement. Simulation shows it self-limits, because a
+  higher target yields slower typing and so fewer "fast" readings. It settles
+  in a band (1.55–2.39 over 200 prompts) rather than climbing to the ceiling.
+  Re-run the simulation after changing any weight or threshold.

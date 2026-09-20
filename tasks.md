@@ -77,6 +77,11 @@ when the integration lands** — until then the code does not yet diverge.
       Removes the tier machinery (`src/prompt-lists.js`, the `?tier=`
       parameter) and rewrites D1's reversal section, which currently describes
       the tiers.
+- [ ] **Decide the nonsense mix before or after her first session.** At the
+      difficulty she settles into (~1.9), about 86% of prompts are nonsense.
+      Either lower the familiarity weight first, or let one session tell you
+      whether she minds. Run `node scripts/simulate-session.mjs` to see the
+      effect of a change without spending a session on it.
 - [ ] Tune the weights against a real session. The current values are
       reasoned, not measured — particularly `fastIntervalMs` / `slowIntervalMs`
       in `typing-estimate.js`, which are guesses at a seven-year-old's pace.
