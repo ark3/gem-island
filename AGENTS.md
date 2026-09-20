@@ -80,6 +80,13 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **`src/main.js`** — DOM/Canvas rendering, keyboard input, game loop. Connects
   the pure logic to the browser.
 - **`src/scene-renderer.js`** — canvas scene drawing, extracted from `main.js`.
+  Paints the static layers of a node once into an offscreen canvas and animates
+  everything above them, which is why a fully animated scene is cheap.
+- **`src/ink.js`** — the drawing vocabulary every canvas surface shares: ink and
+  paper colour tokens, seeded hand-drawn line wobble, flat fills, texture and
+  text. Read [`docs/visual-v2.md`](docs/visual-v2.md) before changing it. Two
+  rules: flat colour only (no gradients, ever), and every wobble is seeded from
+  something stable so an animated scene does not shimmer.
 
 **Supporting modules:**
 
@@ -91,6 +98,14 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **`src/prompt-trainer.js`** — chooses which prompt to serve next
 - **`src/island-utils.js`**, **`src/island.manual.js`** — shared helpers and a
   hand-built island used by tests
+
+**Tools:**
+
+- **`tools/gallery.html`** — every biome, coastline, typing state and feature on
+  one page, drawn by the game's own renderer. Open it in a browser after any
+  visual change; it is the fastest way to see the whole art set, and the closest
+  thing the renderer has to a regression check
+  ([`docs/decisions.md`](docs/decisions.md), D4).
 
 ## 5. Key concepts
 
@@ -113,3 +128,7 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **The island is immutable after generation.** Rewards are pre-placed and
   revealed by conditions, never spawned (`docs/decisions.md`, D3).
 - **Functional core, imperative shell.** Keep pure functions pure.
+- **Animation is a pure function of `time`.** The renderer takes one number —
+  seconds since boot — and draws the frame for it. Nothing reads a clock
+  directly. That is what lets `prefers-reduced-motion` be honoured by pinning
+  `time` to zero, and what keeps the scene reproducible.

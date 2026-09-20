@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gem Island — Art Gallery</title>
+    <style>
+      :root {
+        --ink: #2f2418;
+        --paper: #fdf4e0;
+        --paper-deep: #f4e6c8;
+        font-family: "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+        color: var(--ink);
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #cfe9f2;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 1.6rem;
+      }
+      p.lede {
+        margin: 0 0 24px;
+        max-width: 60ch;
+        color: #6b5a46;
+      }
+      h2 {
+        margin: 28px 0 12px;
+        font-size: 1.1rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 18px;
+      }
+      figure {
+        margin: 0;
+        background: var(--paper);
+        border: 3px solid var(--ink);
+        border-radius: 16px;
+        padding: 10px;
+        box-shadow: 5px 5px 0 rgba(47, 36, 24, 0.18);
+      }
+      figcaption {
+        margin-top: 6px;
+        font-weight: 700;
+        font-size: 0.9rem;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        border-radius: 10px;
+        background: var(--paper);
+      }
+      .sheet {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Gem Island — Art Gallery</h1>
+    <p class="lede">
+      Every biome and every feature, drawn straight from the renderer. Open this
+      page after changing anything in <code>src/scene-renderer.js</code>,
+      <code>src/ink.js</code> or <code>src/biomes.js</code> to see the whole art
+      set at once instead of hunting for a node in a real run. No build step and
+      no dependencies — it imports the game's own modules.
+    </p>
+
+    <h2>Biomes</h2>
+    <div class="grid" id="biomes"></div>
+
+    <h2>Coastlines</h2>
+    <div class="grid" id="coasts"></div>
+
+    <h2>States</h2>
+    <div class="grid" id="states"></div>
+
+    <h2>Features</h2>
+    <div class="grid sheet" id="features"></div>
+
+    <script type="module">
+      import { listBiomes } from "../src/biomes.js";
+      import { renderSceneToCanvas } from "../src/scene-renderer.js";
+
+      const SCENE_WIDTH = 640;
+      const SCENE_HEIGHT = 480;
+
+      const FEATURE_TYPES = [
+        "gem",
+        "shell",
+        "pebble",
+        "pinecone",
+        "wildflower",
+        "carrot",
+        "sign",
+        "cave_sign",
+        "person",
+        "sandcastle",
+        "owl",
+        "kite",
+        "tractor",
+        "ship",
+        "unknown_thing",
+      ];
+
+      const NEIGHBOR_BIOMES = ["forest", "sand", "plains", "rock"];
+
+      let islandCounter = 0;
+
+      function makeIsland(biomeId, openDirections, features) {
+        // Unique ids per island: the renderer caches its static layer per node.
+        const centreId = `centre-${(islandCounter += 1)}`;
+        const nodes = {
+          [centreId]: {
+            id: centreId,
+            title: biomeId,
+            biome: biomeId,
+            position: { x: 0, y: 0 },
+            features,
+            actions: [],
+          },
+        };
+        const offsets = {
+          north: { x: 0, y: -1 },
+          south: { x: 0, y: 1 },
+          west: { x: -1, y: 0 },
+          east: { x: 1, y: 0 },
+        };
+        openDirections.forEach((direction, index) => {
+          const offset = offsets[direction];
+          nodes[direction] = {
+            id: `${centreId}-${direction}`,
+            title: direction,
+            biome: NEIGHBOR_BIOMES[index % NEIGHBOR_BIOMES.length],
+            position: { x: offset.x, y: offset.y },
+            features: [],
+            actions: [],
+          };
+        });
+        return { nodes, requiredGems: 10, centre: nodes[centreId] };
+      }
+
+      function moveActions(openDirections) {
+        return openDirections.map((direction, index) => ({
+          id: `move_${direction}`,
+          kind: "move",
+          label: `Go ${direction}`,
+          to: direction,
+          prompt: ["go", "up", "left", "down"][index % 4],
+          isCompleted: false,
+        }));
+      }
+
+      function draw(container, caption, config, width = SCENE_WIDTH, height = SCENE_HEIGHT) {
+        const figure = document.createElement("figure");
+        const canvas = document.createElement("canvas");
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.aspectRatio = `${width} / ${height}`;
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        renderSceneToCanvas(ctx, width, height, config);
+        const label = document.createElement("figcaption");
+        label.textContent = caption;
+        figure.append(canvas, label);
+        container.append(figure);
+      }
+
+      const state = {
+        status: "playing",
+        completedFeatures: new Set(),
+        visitedNodes: new Set(["centre"]),
+        inventory: {},
+      };
+
+      // --- Biomes, fully inland, with a sample of features ------------------
+      const biomesRoot = document.getElementById("biomes");
+      listBiomes().forEach((biome) => {
+        const features = [
+          { id: "f1", type: "gem", actionId: "a1", slotId: "northwest", color: { fill: "#e8615a", stroke: "#f7c9c2" } },
+          { id: "f2", type: "person", actionId: "a2", slotId: "southeast" },
+        ];
+        const open = ["north", "south", "east", "west"];
+        const island = makeIsland(biome.id, open, features);
+        draw(biomesRoot, `${biome.title} (${biome.id})`, {
+          node: island.centre,
+          island,
+          state,
+          actions: [
+            ...moveActions(open),
+            { id: "a1", kind: "pickup", label: "Take gem", prompt: "gem", isCompleted: false },
+            { id: "a2", kind: "say", label: "Talk", prompt: "hello", isCompleted: false },
+          ],
+          typedBuffer: "ge",
+          time: 1.2,
+        });
+      });
+
+      // --- Coastlines: one open side at a time ------------------------------
+      const coastsRoot = document.getElementById("coasts");
+      [
+        ["sand", ["north"]],
+        ["forest", ["south", "east"]],
+        ["rock", ["west"]],
+        ["plains", ["north", "south"]],
+      ].forEach(([biomeId, open]) => {
+        const island = makeIsland(biomeId, open, []);
+        draw(coastsRoot, `${biomeId} — open: ${open.join(", ")}`, {
+          node: island.centre,
+          island,
+          state,
+          actions: moveActions(open),
+          time: 2.4,
+        });
+      });
+
+      // --- Typing feedback and the win screen -------------------------------
+      const statesRoot = document.getElementById("states");
+      const talker = [{ id: "npc", type: "person", actionId: "talk", slotId: "southeast" }];
+      const typingIsland = makeIsland("plains", ["north", "east"], talker);
+      ["", "he", "hello"].forEach((buffer) => {
+        draw(statesRoot, `typed: "${buffer || "(nothing)"}"`, {
+          node: typingIsland.centre,
+          island: typingIsland,
+          state,
+          actions: [
+            ...moveActions(["north", "east"]),
+            { id: "talk", kind: "say", label: "Talk", prompt: "hello", isCompleted: false },
+          ],
+          typedBuffer: buffer,
+          highlightedActionId: buffer === "hello" ? "talk" : null,
+          time: 1.6,
+        });
+      });
+
+      draw(statesRoot, "win screen", {
+        node: null,
+        island: typingIsland,
+        state: { ...state, status: "success" },
+        actions: [],
+        successAction: { id: "new-island", kind: "reset", label: "New island", prompt: "new" },
+        typedBuffer: "ne",
+        time: 2.2,
+      });
+
+      // --- Every feature on a plain ground ----------------------------------
+      const featuresRoot = document.getElementById("features");
+      FEATURE_TYPES.forEach((type) => {
+        const features = [
+          {
+            id: "solo",
+            type,
+            actionId: "solo-action",
+            slotId: "northwest",
+            color: { fill: "#5bb0d6", stroke: "#c9e6f2" },
+          },
+        ];
+        const island = makeIsland("plains", [], features);
+        island.centre.features = features;
+        draw(
+          featuresRoot,
+          type,
+          {
+            node: island.centre,
+            island,
+            state,
+            actions: [
+              { id: "solo-action", kind: "pickup", label: type, prompt: type.slice(0, 4), isCompleted: false },
+            ],
+            time: 3.1,
+          },
+          320,
+          280
+        );
+      });
+    </script>
+  </body>
+</html>

@@ -92,11 +92,12 @@ island after generation should gate a pre-placed feature instead.
 - **Date:** ongoing convention, formalized in `AGENTS.md`
 - **Status:** Active
 
-Roughly 60% of `src/` (`scene-renderer.js`, `main.js`, `explorer.js`,
-`features.js` — about 2,530 of 4,246 lines) has no test coverage. This is a
-consequence of the functional-core/imperative-shell split: pure logic stays
-testable under `node --test` with no DOM, and everything touching Canvas is
-deliberately left outside that boundary.
+Roughly 65% of `src/` (`scene-renderer.js`, `main.js`, `explorer.js`,
+`features.js`, `ink.js` — about 3,230 of 4,960 lines, recounted 2026-09-19
+after the visual overhaul) has no test coverage. This is a consequence of the
+functional-core/imperative-shell split: pure logic stays testable under
+`node --test` with no DOM, and everything touching Canvas is deliberately left
+outside that boundary.
 
 **Rationale:** keeping the shell untested is what keeps the core pure and the
 test suite dependency-free.
@@ -105,3 +106,46 @@ test suite dependency-free.
 whenever renderer changes are on the table. A headless browser smoke test would
 cover the integration path without compromising the split — tracked in
 `../tasks.md`.
+
+**Partial mitigation, 2026-09-19:** `tools/gallery.html` renders every biome,
+coastline, typing state and feature from the game's own modules on one page. It
+is a check by eye rather than an assertion, and it adds no dependency. It caught
+two real bugs during the visual overhaul that a playthrough had not surfaced —
+a shared static-layer cache key and a prompt-placement collision.
+
+---
+
+## D5 — The page loads one webfont and degrades to a system stack
+
+- **Date:** 2026-09-19 (visual overhaul)
+- **Status:** Active
+- **Extends:** `visual-v1.md` left "typography choices" explicitly undefined;
+  `visual-v2.md` now defines them.
+
+`index.html` loads **Baloo 2** from Google Fonts. Everything drawn on canvas and
+everything in the DOM shares the stack
+`"Baloo 2", "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif`.
+
+This is the project's only runtime network request, in a codebase whose main
+virtue is having no dependencies and no build step — so it needs recording
+rather than discovering.
+
+**Rationale:** the game is for a child and the prompts are the thing they look at
+most. A rounded, heavy, friendly face does more for how the game feels than any
+other single choice, and the previous monospace prompts actively read as a
+developer tool. A webfont buys that for two `<link>` tags.
+
+**Why it is acceptable:**
+
+- It is not a *build* dependency. There is still no `package.json`, no install
+  step, and nothing to keep up to date. Deleting the two `<link>` tags is a
+  complete, working removal.
+- It degrades. Offline, or if Google Fonts is blocked, the fallback stack
+  renders and the game still looks deliberate — the layout, colour and line work
+  carry it. This was checked, not assumed.
+- Canvas text picks up the font as soon as it loads, because the renderer
+  repaints every frame. There is no flash of a wrongly-measured label.
+
+**If this is reversed**, drop the `<link>` tags and the `"Baloo 2"` entry from
+both `FONT_STACK` in `src/ink.js` and `--font` in `index.html`; nothing else
+depends on it.

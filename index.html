@@ -4,186 +4,211 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gem Island</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M20 3 L35 18 L20 37 L5 18 Z' fill='%23e8615a' stroke='%232f2418' stroke-width='3.5' stroke-linejoin='round'/%3E%3Cpath d='M20 3 L35 18 L20 18 Z' fill='%23f2a516'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* Tokens mirror src/ink.js so the page and the canvas agree on colour.
+         See docs/visual-v2.md. */
       :root {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0f172a;
-        color: #e2e8f0;
+        --ink: #2f2418;
+        --ink-light: #6b5a46;
+        --paper: #fdf4e0;
+        --paper-deep: #f4e6c8;
+        --paper-edge: #e2cfa6;
+        --highlight: #f2a516;
+        --ready: #3fa34d;
+        --alert: #d1495b;
+        --sky: #cfe9f2;
+
+        --font: "Baloo 2", "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+        --border: 3px solid var(--ink);
+        --sticker: 6px 6px 0 var(--paper-edge);
+
+        font-family: var(--font);
+        color: var(--ink);
+        background: var(--sky);
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
         margin: 0;
         min-height: 100vh;
+        padding: 20px 16px 28px;
         display: flex;
         justify-content: center;
         align-items: flex-start;
-        padding: 24px 16px 32px;
+        background: var(--sky);
       }
 
-      .panel {
-        width: min(1280px, 98vw);
-        background: #111827;
-        border: 1px solid #1f2937;
-        border-radius: 12px;
-        padding: 28px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-      }
-
-      @media (max-height: 760px) {
-        body {
-          padding: 18px 12px 24px;
-        }
-
-        .panel {
-          padding: 22px;
-          gap: 18px;
-        }
-      }
-
-      @media (max-width: 1100px) {
-        body {
-          padding: 16px 10px 22px;
-        }
-
-        .panel {
-          width: 100%;
-        }
-      }
-
-      .panel__grid {
-        display: grid;
-        grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
-        gap: 28px;
-        align-items: start;
-      }
-
-      @media (max-width: 920px) {
-        .panel__grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .panel__scene {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      .panel__sidebar {
-        display: flex;
-      }
-
-      .sidebar-stack {
-        width: 100%;
-        background: #0b1220;
-        border: 1px solid #1f2937;
-        border-radius: 12px;
-        padding: 18px 18px 16px;
+      .page {
+        width: min(1240px, 100%);
+        background: var(--paper);
+        border: var(--border);
+        border-radius: 24px;
+        box-shadow: 10px 10px 0 rgba(47, 36, 24, 0.14);
+        padding: 20px 24px 24px;
         display: flex;
         flex-direction: column;
         gap: 16px;
       }
 
-      .sidebar-section + .sidebar-section {
-        padding-top: 16px;
-        border-top: 1px solid rgba(148, 163, 184, 0.12);
-      }
+      /* ---- header ---------------------------------------------------- */
 
-      .status-card {
-        font-size: 0.9rem;
-        color: #94a3b8;
-        line-height: 1.4;
+      .masthead {
         display: flex;
-        flex-direction: column;
-        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
       }
 
-      .status-card__node {
+      .masthead__title {
         margin: 0;
-        font-size: 1.35rem;
-        font-weight: 600;
-        color: #e2e8f0;
-        letter-spacing: 0.05em;
+        font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        display: flex;
+        align-items: center;
+        gap: 12px;
       }
 
-      .status-card__title {
-        margin-bottom: 6px;
-        font-size: 0.85rem;
-        color: #e2e8f0;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .masthead__gem {
+        width: 30px;
+        height: 30px;
+        flex: none;
       }
 
-      .status-card__body {
+      .gem-meter {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--paper-deep);
+        border: var(--border);
+        border-radius: 999px;
+        padding: 7px 18px 7px 14px;
+        box-shadow: var(--sticker);
+      }
+
+      .gem-meter__label {
+        font-weight: 700;
+        font-size: 1.1rem;
+        white-space: nowrap;
+      }
+
+      .gem-meter__track {
+        display: inline-block;
+        width: clamp(90px, 18vw, 190px);
+        height: 16px;
+        background: var(--paper);
+        border: 2.5px solid var(--ink);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .gem-meter__fill {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: var(--highlight);
+        border-radius: 999px;
+        transition: width 260ms ease-out;
+      }
+
+      /* ---- layout ------------------------------------------------------ */
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 286px;
+        gap: 20px;
+        align-items: start;
+      }
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .stage {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 14px;
+        min-width: 0;
       }
 
       canvas.scene {
         width: 100%;
         aspect-ratio: 4 / 3;
+        /* On a short window the scene becomes wider than 4:3 rather than
+           pushing the typing bar off the bottom. The renderer is fully
+           responsive, so a wider frame is simply a wider scene. */
+        max-height: min(62vh, 720px);
         display: block;
-        border-radius: 18px;
-        border: 2px solid #1f2937;
-        background: #0b1220;
+        background: var(--paper);
+        border-radius: 20px;
       }
 
-      @media (max-height: 760px) {
-        canvas.scene {
-          border-radius: 14px;
-          border-width: 1px;
-        }
-      }
+      /* ---- the typing bar, directly under the scene -------------------- */
 
-      .map-card {
+      .typing {
         display: flex;
-        flex-direction: column;
-        gap: 12px;
+        align-items: center;
+        gap: 4px;
+        background: var(--paper-deep);
+        border: var(--border);
+        border-radius: 18px;
+        padding: 12px 18px;
+        box-shadow: var(--sticker);
+        min-height: 64px;
       }
 
-      .map-card__title {
-        margin: 0;
-        font-size: 0.9rem;
+      .typing__hint {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--ink-light);
+        flex: none;
+      }
+
+      .typing__buffer {
+        flex: 1;
+        font-size: 1.9rem;
+        font-weight: 800;
         letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #e5e7eb;
+        min-height: 1.3em;
+        display: flex;
+        align-items: center;
       }
 
-      .map-card canvas {
-        width: 100%;
-        aspect-ratio: 1 / 1;
-        border-radius: 10px;
-        background: #030712;
-        border: 1px solid #1e293b;
-      }
-
-      .buffer {
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid #1f2937;
-        background: #030712;
-        min-height: 24px;
-        font-family: "Fira Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        white-space: pre-wrap;
-        position: relative;
-      }
-
-      .buffer::after {
+      .typing__buffer::after {
         content: "";
         display: inline-block;
-        width: 0.2ch;
-        height: 1.3em;
-        margin-left: 1px;
-        background: #e2e8f0;
-        animation: cursorBlink 1s steps(1) infinite;
-        vertical-align: text-bottom;
+        width: 3px;
+        height: 1.1em;
+        margin-left: 3px;
+        background: var(--ink);
+        animation: blink 1.05s steps(1) infinite;
       }
 
-      @keyframes cursorBlink {
+      .typing--ready {
+        background: #dff2e1;
+      }
+
+      .typing--ready .typing__buffer {
+        color: var(--ready);
+      }
+
+      @keyframes blink {
         0%,
         49% {
           opacity: 1;
@@ -194,57 +219,151 @@
         }
       }
 
-      .messages {
-        margin-top: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
       .message {
-        min-height: 20px;
-        font-weight: 600;
-        color: #94a3b8;
+        min-height: 26px;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--ink-light);
+        text-align: center;
       }
 
       .message--success {
-        color: #34d399;
+        color: var(--ready);
       }
 
       .message--error {
-        color: #f87171;
+        color: var(--alert);
       }
 
+      /* ---- sidebar ----------------------------------------------------- */
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .card {
+        background: var(--paper-deep);
+        border: var(--border);
+        border-radius: 18px;
+        padding: 14px 16px 16px;
+        box-shadow: var(--sticker);
+      }
+
+      .card__title {
+        margin: 0 0 10px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-light);
+      }
+
+      .place__name {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 800;
+        line-height: 1.15;
+      }
+
+      .place__stats {
+        margin: 8px 0 0;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--ink-light);
+      }
+
+      .card--map canvas {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        display: block;
+        border-radius: 12px;
+      }
+
+      .pockets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pocket {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--paper);
+        border: 2.5px solid var(--ink);
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-weight: 700;
+        font-size: 0.95rem;
+      }
+
+      .pocket--empty {
+        color: var(--ink-light);
+        font-weight: 600;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .typing__buffer::after {
+          animation: none;
+        }
+        .gem-meter__fill {
+          transition: none;
+        }
+      }
     </style>
   </head>
   <body>
-    <main class="panel">
-      <div class="panel__grid">
-        <section class="panel__scene">
+    <main class="page">
+      <header class="masthead">
+        <h1 class="masthead__title">
+          <svg class="masthead__gem" viewBox="0 0 40 40" aria-hidden="true">
+            <path
+              d="M20 3 L35 18 L20 37 L5 18 Z"
+              fill="#e8615a"
+              stroke="#2f2418"
+              stroke-width="3.5"
+              stroke-linejoin="round"
+            />
+            <path d="M20 3 L35 18 L20 18 Z" fill="#f2a516" stroke="none" />
+          </svg>
+          Gem Island
+        </h1>
+        <div class="gem-meter">
+          <span class="gem-meter__label" data-gem-label>Gems 0 / 0</span>
+          <span class="gem-meter__track"><span class="gem-meter__fill" data-gem-fill></span></span>
+        </div>
+      </header>
+
+      <div class="layout">
+        <section class="stage">
           <canvas class="scene" data-scene></canvas>
-        </section>
-        <aside class="panel__sidebar">
-          <div class="sidebar-stack">
-            <section class="sidebar-section status-card">
-              <p class="status-card__node" data-node-title>Ship</p>
-              <div class="status-card__body" data-progress>
-                <div>Gems: 0 / 0</div>
-                <div>Visited nodes: 1</div>
-                <div>Completed nodes: 0</div>
-              </div>
-            </section>
-            <section class="sidebar-section map-card">
-              <p class="map-card__title">Island Map</p>
-              <canvas data-map></canvas>
-            </section>
-            <section class="sidebar-section buffer-panel">
-              <div class="buffer" data-buffer></div>
-              <div class="messages">
-                <div class="message" data-message aria-live="polite"></div>
-                <div class="message" data-toast aria-live="polite"></div>
-              </div>
-            </section>
+          <div class="typing" data-typing>
+            <span class="typing__hint">Type it, then press Enter</span>
+            <span class="typing__buffer" data-buffer></span>
           </div>
+          <p class="message" data-message aria-live="polite"></p>
+          <p class="message" data-toast aria-live="polite"></p>
+        </section>
+
+        <aside class="sidebar">
+          <section class="card card--place">
+            <p class="card__title">You are at</p>
+            <p class="place__name" data-node-title>Ship</p>
+            <p class="place__stats" data-progress></p>
+          </section>
+
+          <section class="card card--map">
+            <p class="card__title">Island Map</p>
+            <canvas data-map></canvas>
+          </section>
+
+          <section class="card card--pockets">
+            <p class="card__title">Pockets</p>
+            <div class="pockets" data-inventory></div>
+          </section>
         </aside>
       </div>
     </main>

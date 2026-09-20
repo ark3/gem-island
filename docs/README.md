@@ -37,13 +37,14 @@ is now misleading. See `decisions.md`, entry D1.
 | [`initial-full-design.md`](initial-full-design.md) | What the game *is*: player experience, core loop, node/action model, quest structure. The broadest description. | **Current** |
 | [`design-v2.md`](design-v2.md) | Spatial semantics, directional consistency, map behavior, node and pocket completion rules. | **Current** |
 | [`rendering-v1.md`](rendering-v1.md) | How scenes are drawn: the layer stack, biome and feature metadata, adjacency hints. | **Current**, partly aspirational |
-| [`visual-v1.md`](visual-v1.md) | How the game *looks*: coloring-book aesthetic, camera, composition, map visuals. Explicitly not a final art spec. | **Current** |
+| [`visual-v2.md`](visual-v2.md) | How the game *looks*, in the detail v1 deferred: palette, line weights, typography, motion, and the layer stack as built. Explicitly not a final art spec. | **Current** |
 | [`decisions.md`](decisions.md) | Deliberate divergences from the above, with rationale and date. | **Current** |
 
 ## Partly superseded documents
 
 | Document | Status |
 |---|---|
+| [`visual-v1.md`](visual-v1.md) | **Superseded in part.** `visual-v2.md` supersedes exactly one section — *"What is intentionally not defined yet"* — by defining the palette, line weights, typography and animation that v1 left open. Every other part of v1 still governs, including the coloring-book rules, the slightly-tilted top-down camera, the composition rules and the map's node states. Read v1 for intent and v2 for specifics. |
 | [`design-v1.md`](design-v1.md) | **Superseded in part.** `design-v2.md` supersedes and clarifies *parts* of it — spatial semantics, map behaviour, completion rules and pockets — and says so in its own preamble. The rest still stands, notably the "Design invariant" summary and the out-of-scope list, neither of which v2 restates. Check v2 first on the topics above; fall back here otherwise. |
 
 ---
