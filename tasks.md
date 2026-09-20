@@ -145,14 +145,29 @@ does not start by rebuilding what this one figured out.
       the untested-coverage figure disagreed with `decisions.md`.
 - [x] Documented that adding a feature type means touching four
       hand-maintained lists, none of which fails loudly when missed.
-- [ ] **Close the object palette.** Prop body colours are hex literals inside
-      each painter — no tokens, no rule, so every new feature invents its own.
-      `visual-v2.md` §2 closes every other colour in the game and says this one
-      is open. Closing it means choosing a small set of object colours, putting
-      them in `ink.js` beside the other tokens, and moving the painters onto
-      them. A first attempt instead recorded a frequency table of the existing
-      literals, which was deleted: it described the symptom as though it were
-      the rule, and went stale the moment a feature was added.
+- [x] **Object palette closed, 2026-09-20.** Prop body colours were hex
+      literals inside each painter — no tokens, no rule, so every new feature
+      invented its own. `src/ink.js` now holds thirteen base colours plus
+      `SKINS`, and `lighten()` / `darken()` derive every shade from them, always
+      toward paper or ink and never toward another hue. All 50 literals in
+      `scene-renderer.js` are gone; the only hex left in that file is biome
+      fallbacks. Rules and the set are in `docs/visual-v2.md` §2, and the
+      gallery opens with the palette as swatches.
+  - [x] Two defects the exercise exposed, both fixed: the generator and the win
+        screen carried **different gem colour sets**, so the gems a player
+        collected were not the gems they were congratulated with; and one gem
+        body was literally `READY`, the completion green, so retuning the state
+        colour would have silently retuned the gems. One list now lives in
+        `ink.js` and uses `EMERALD`.
+  - [x] Verified by diffing canvas contents between `HEAD` and the working tree
+        figure by figure — the first attempt diffed page screenshots and was
+        swamped by a sub-pixel layout shift. Only the ship hull, the NPC and the
+        win screen moved perceptibly; everything else was under a delta of 30.
+- [ ] **Move the biome fallbacks into `biomes.js`.** The eighteen hex literals
+      still in `scene-renderer.js` are all `biome.canopy || "#2d7140"`-style
+      defaults for optional biome fields. They duplicate `FALLBACK_BIOME`, which
+      only carries three of them, and they are the last place a reader can
+      mistake a literal for an acceptable pattern.
 - [?] **Open, raised by the cold read:** `rendering-v1.md`'s feature
       architecture — per-feature `draw()`/`promptAnchor()` hooks, biome slot
       queries, constraint-based placement — was never built. `docs/README.md`

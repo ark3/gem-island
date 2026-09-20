@@ -59,6 +59,39 @@
       .sheet {
         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
       }
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+      }
+      .swatch {
+        border: 3px solid var(--ink);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--paper);
+      }
+      .swatch .chip {
+        height: 46px;
+        border-bottom: 3px solid var(--ink);
+      }
+      .swatch .shades {
+        display: flex;
+        height: 16px;
+      }
+      .swatch .shades span {
+        flex: 1;
+      }
+      .swatch b {
+        display: block;
+        padding: 5px 8px 1px;
+        font-size: 0.8rem;
+      }
+      .swatch code {
+        display: block;
+        padding: 0 8px 6px;
+        font-size: 0.7rem;
+        color: #6b5a46;
+      }
     </style>
   </head>
   <body>
@@ -70,6 +103,17 @@
       set at once instead of hunting for a node in a real run. No build step and
       no dependencies — it imports the game's own modules.
     </p>
+
+    <h2>Palette</h2>
+    <p class="lede">
+      Every colour a prop may be painted with. A shade of one comes from
+      <code>lighten()</code> or <code>darken()</code>, never from a new hex
+      literal — see <code>src/ink.js</code>.
+    </p>
+    <div class="swatches" id="palette"></div>
+
+    <h2>Gems</h2>
+    <div class="grid sheet" id="gems"></div>
 
     <h2>Biomes</h2>
     <div class="grid" id="biomes"></div>
@@ -90,6 +134,7 @@
       import { listBiomes } from "../src/biomes.js";
       import { renderSceneToCanvas } from "../src/scene-renderer.js";
       import { renderMapToCanvas } from "../src/map-renderer.js";
+      import * as ink from "../src/ink.js";
 
       const SCENE_WIDTH = 640;
       const SCENE_HEIGHT = 480;
@@ -187,7 +232,7 @@
       const biomesRoot = document.getElementById("biomes");
       listBiomes().forEach((biome) => {
         const features = [
-          { id: "f1", type: "gem", actionId: "a1", slotId: "northwest", color: { fill: "#e8615a", stroke: "#f7c9c2" } },
+          { id: "f1", type: "gem", actionId: "a1", slotId: "northwest", color: ink.GEM_COLORS[0] },
           { id: "f2", type: "person", actionId: "a2", slotId: "southeast" },
         ];
         const open = ["north", "south", "east", "west"];
@@ -334,7 +379,7 @@
             type,
             actionId: "solo-action",
             slotId: "northwest",
-            color: { fill: "#5bb0d6", stroke: "#c9e6f2" },
+            color: ink.GEM_COLORS[3],
           },
         ];
         const island = makeIsland("plains", [], features);
@@ -353,6 +398,52 @@
           },
           320,
           280
+        );
+      });
+      // --- The object palette, as swatches ----------------------------------
+      // Each chip is a base colour; the strip under it is that colour at
+      // darken(0.4), darken(0.2), lighten(0.3), lighten(0.6), which is the
+      // range a painter can reach without inventing a literal.
+      const PALETTE_NAMES = [
+        "RED", "ORANGE", "AMBER", "STRAW", "WOOD", "LEAF", "STEM",
+        "EMERALD", "SKY", "PLUM", "ROSE", "STONE", "CHAR",
+      ];
+      const paletteRoot = document.getElementById("palette");
+      PALETTE_NAMES.forEach((name) => {
+        const base = ink[name];
+        const cell = document.createElement("div");
+        cell.className = "swatch";
+        const shades = [
+          ink.darken(base, 0.4), ink.darken(base, 0.2),
+          ink.lighten(base, 0.3), ink.lighten(base, 0.6),
+        ];
+        cell.innerHTML =
+          `<div class="chip" style="background:${base}"></div>` +
+          `<div class="shades">${shades.map((s) => `<span style="background:${s}"></span>`).join("")}</div>` +
+          `<b>${name}</b><code>${base}</code>`;
+        paletteRoot.append(cell);
+      });
+
+      // --- Every gem colour -------------------------------------------------
+      // One list, shared by the generator and the win screen. If a gem here
+      // is hard to tell from its neighbour, the set is wrong.
+      const gemsRoot = document.getElementById("gems");
+      ink.GEM_COLORS.forEach((color, index) => {
+        const features = [{ id: "g", type: "gem", actionId: "g-action", slotId: "northwest", color }];
+        const island = makeIsland("plains", [], features);
+        island.centre.features = features;
+        draw(
+          gemsRoot,
+          `gem ${index + 1} — ${color.fill}`,
+          {
+            node: island.centre,
+            island,
+            state,
+            actions: [{ id: "g-action", kind: "pickup", label: "gem", prompt: "gem", isCompleted: false }],
+            time: 3.1,
+          },
+          300,
+          260
         );
       });
     </script>

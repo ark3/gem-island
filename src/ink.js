@@ -108,6 +108,71 @@ export function mix(hexA, hexB, t) {
 }
 
 // ============================================================================
+// Object palette
+//
+// Prop body colours. Every feature in the game is painted from these, and a
+// shade of one comes from `lighten()` or `darken()` rather than from a new hex
+// literal. Shades only ever run toward paper or toward ink: mixing two hues is
+// what turns a flat-fill scene muddy.
+//
+// Two rules keep this set honest.
+//
+//   1. `READY` and `ALERT` are state colours and never appear on a prop. They
+//      mean "you typed it" and "that was wrong"; if a green gem were literally
+//      `READY`, retuning the completion green would silently retune the gems.
+//      A prop may of course be green — just not *that* green.
+//   2. A prop is never filled with its biome's `dominantColor`. That is the
+//      ground it stands on, and the prop will vanish into it.
+//
+// `AMBER` and `HIGHLIGHT` are deliberately one colour under two names: warm
+// amber is the game's accent, on a flower and on a half-typed prompt alike.
+// ============================================================================
+
+export const RED = "#e8615a";
+export const ORANGE = "#ef8135";
+export const AMBER = HIGHLIGHT;
+export const STRAW = "#f2d79c";
+export const WOOD = "#a9702f";
+export const LEAF = "#3f9052";
+export const STEM = "#4c8b34";
+export const EMERALD = "#2fa17a";
+export const SKY = "#5bb0d6";
+export const PLUM = "#b78ad6";
+export const ROSE = "#ef8fb4";
+export const STONE = "#c3cad6";
+export const CHAR = "#4a4038";
+
+/** A paler shade of a palette colour. */
+export function lighten(hex, t) {
+  return mix(hex, PAPER, t);
+}
+
+/** A deeper shade of a palette colour. */
+export function darken(hex, t) {
+  return mix(hex, INK, t);
+}
+
+// Skin tones, which are deliberate rather than derived: these are people, and
+// four of them share the island. Ordered light to deep so a painter indexing
+// by seed spreads across the range instead of clustering.
+export const SKINS = Object.freeze(["#f0cba6", "#f3d7b8", "#c98d52", "#8a5f3c"]);
+
+// Gem colours, one per hue and far enough apart that a six-year-old naming
+// them out loud is never in doubt. The facet tint is the body lightened by a
+// fixed amount, because on a real brilliant cut the table catches more light
+// than the pavilion by a consistent amount — not by a per-colour one.
+//
+// This is the only gem list. `island.generator.js` hands these out and the win
+// screen fans them; they used to be two different sets, so the gems a player
+// collected were not the gems they were congratulated with.
+export const GEM_FACET_LIGHTEN = 0.38;
+export const GEM_COLORS = Object.freeze(
+  [RED, AMBER, EMERALD, SKY, PLUM, ROSE].map((fill) =>
+    Object.freeze({ fill, stroke: lighten(fill, GEM_FACET_LIGHTEN) })
+  )
+);
+
+// ============================================================================
 // Hand-drawn geometry
 // ============================================================================
 

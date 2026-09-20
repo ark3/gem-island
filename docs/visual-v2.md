@@ -86,26 +86,55 @@ jobs, which is what makes the map legible. Supporting tints live alongside it in
 
 ### Gems
 
-Gem colours live in `src/island.generator.js` as `{ fill, stroke }` pairs. In
-this style `fill` is the body and `stroke` is the **facet tint** drawn inside
-the gem — the outline itself is always `INK`, like everything else.
+`GEM_COLORS` in `src/ink.js` is the whole gem set: six `{ fill, stroke }` pairs,
+one per hue. `fill` is the body and `stroke` is the **facet tint** drawn inside
+the gem — the outline itself is always `INK`, like everything else. The tint is
+not chosen per gem; it is the body lightened by `GEM_FACET_LIGHTEN`, because on
+a brilliant cut the table catches more light than the pavilion by a consistent
+amount.
 
-### Object colours — not closed
+There is one list because there used to be two — the generator handed out one
+set and the win screen fanned another, so the gems a player collected were not
+the gems they were congratulated with. `tools/gallery.html` now draws the set,
+which is where a gem too close to its neighbour would show.
 
-The palette above closes ink, paper, state, biome and gem colours. It does
-**not** cover the body colour of a prop. Those are hex literals inside each
-painter in `src/scene-renderer.js`, with no shared tokens behind them.
+### Object colours
 
-That is a gap, not a design. Until it is closed:
+The body colour of a prop comes from the object palette in `src/ink.js`:
 
-- Reuse a colour already on screen rather than adding a new one.
-  `grep -o '#[0-9a-f]\{6\}' src/scene-renderer.js | sort | uniq -c | sort -rn`
-  shows what is in use and how often — read it from the code, which cannot go
-  stale, rather than from a list here, which would.
-- Never fill a prop with the biome's `dominantColor`. That is the land it
-  stands on, and the prop will disappear into it.
+| | | | |
+|---|---|---|---|
+| `RED` `#e8615a` | `ORANGE` `#ef8135` | `AMBER` `#f2a516` | `STRAW` `#f2d79c` |
+| `WOOD` `#a9702f` | `LEAF` `#3f9052` | `STEM` `#4c8b34` | `EMERALD` `#2fa17a` |
+| `SKY` `#5bb0d6` | `PLUM` `#b78ad6` | `ROSE` `#ef8fb4` | `STONE` `#c3cad6` |
+| `CHAR` `#4a4038` | | | |
 
-Closing this properly is tracked in `../tasks.md`.
+Plus `SKINS`, four skin tones ordered light to deep, which are deliberate
+rather than derived — these are people, and four of them share the island.
+
+Three rules keep the set small enough to stay a set:
+
+1. **A shade comes from `lighten()` or `darken()`, never from a new literal.**
+   Both live in `ink.js` and both run toward `PAPER` or toward `INK` — never
+   toward another hue, which is what turns a flat-fill scene muddy. An owl is
+   `lighten(WOOD, 0.1)`; a cave sign's post is `darken(STRAW, 0.6)`.
+2. **`READY` and `ALERT` never appear on a prop.** They mean "you typed it" and
+   "that was wrong". A green gem that was literally `READY` would be silently
+   recoloured the next time the completion green was retuned — which is why the
+   gem set uses `EMERALD` and not the state green it used to. A prop may of
+   course be green; just not *that* green. `AMBER` and `HIGHLIGHT` are one
+   colour under two names, deliberately: warm amber is the game's accent, on a
+   flower and on a half-typed prompt alike.
+3. **Never fill a prop with its biome's `dominantColor`.** That is the ground it
+   stands on, and the prop will disappear into it.
+
+`tools/gallery.html` opens with the palette as swatches, each base over the
+range `lighten()` and `darken()` reach, so the answer to "what can I paint this
+with" is a page rather than a grep.
+
+The hex literals left in `src/scene-renderer.js` are all biome fallbacks
+(`biome.canopy || …`), not prop colours. Moving those to `biomes.js` where the
+rest of the biome palette lives is tracked in `../tasks.md`.
 
 ---
 
@@ -291,9 +320,10 @@ glancing at: where you are, the map, what is in your pockets.
 | page chrome and CSS tokens | `index.html` |
 | the whole art set on one page | `tools/gallery.html` |
 
-`tools/gallery.html` renders the whole art set — biomes, coastlines, the map at
-four stages, typing states, the win screen and every feature — from the game's
-own modules, with no build step and no dependencies. Open it after any renderer change; it is far
+`tools/gallery.html` renders the whole art set — the object palette as
+swatches, every gem colour, biomes, coastlines, the map at four stages, typing
+states, the win screen and every feature — from the game's own modules, with no
+build step and no dependencies. Open it after any renderer change; it is far
 faster than hunting for a rock biome in a real run, and it is the closest thing
 the renderer has to a regression test
 ([D4](decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
@@ -310,6 +340,14 @@ you about missing one:
 4. `tools/gallery.html` — `FEATURE_TYPES`, or it never appears in the gallery.
 
 Placement in a real island is the generator's job, separately.
+
+Paint it from the object palette in §2: a base colour from `src/ink.js`, and
+any second tone from `lighten()` or `darken()` of that base. If nothing in the
+set fits, that is a conversation about adding a base, not a reason to reach for
+a literal — a literal is how the palette got away from the code the first time.
+
+The gallery's palette section is the fastest way to answer "what can I paint
+this with": it shows each base over the range those two helpers reach.
 
 ### Three things that will bite
 
@@ -334,7 +372,14 @@ Each of these cost an afternoon during the overhaul.
   that is a v3 conversation.
 - **Sound.** Never discussed. Out of scope.
 - **The explorer's own art.** Her silhouette predates this document and was left
-  alone on purpose; only her outline colour, facing and bob are new.
+  alone on purpose; only her outline colour, facing and bob are new. Her palette
+  is hers — brighter than anything in §2 and deliberately outside it, because
+  she is the one character and should not read as scenery. Two loose ends sit
+  here: her colours are defaults inside `src/explorer.js` rather than tokens,
+  and `src/map-renderer.js` overrides them with muted ones, so the explorer on
+  the map is not quite the explorer in the scene. Neither is a bug anyone has
+  complained about; both are unrecorded, which is why they are written down
+  here.
 
 ---
 

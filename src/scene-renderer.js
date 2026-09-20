@@ -23,14 +23,29 @@ import { normalizeFeatureEntry } from "./features.js";
 import { drawExplorer } from "./explorer.js";
 import {
   ALERT,
+  AMBER,
+  CHAR,
+  GEM_COLORS,
+  GEM_FACET_LIGHTEN,
   HIGHLIGHT,
   INK,
   INK_LIGHT,
+  LEAF,
+  ORANGE,
   PAPER,
   PAPER_DEEP,
+  PLUM,
   READY,
+  RED,
+  SKINS,
+  SKY,
+  STEM,
+  STONE,
+  STRAW,
+  WOOD,
   alpha,
   clamp,
+  darken,
   easeOut,
   font,
   hatch,
@@ -42,6 +57,7 @@ import {
   inkStar,
   inkText,
   lerp,
+  lighten,
   measureText,
   mix,
   noise,
@@ -300,13 +316,13 @@ function drawTree(ctx, x, y, scale, biome, seed) {
   );
   const radius = 30 * scale;
   inkCircle(ctx, x, y - radius * 0.55, radius, {
-    fill: biome.canopy || "#3f9052",
+    fill: biome.canopy || LEAF,
     lw: 3.4 * scale,
     seed: seed + 5,
     rough: 2.6,
   });
   inkCircle(ctx, x - radius * 0.42, y - radius * 0.95, radius * 0.6, {
-    fill: biome.canopy || "#3f9052",
+    fill: biome.canopy || LEAF,
     lw: 3.4 * scale,
     seed: seed + 9,
     rough: 2.2,
@@ -817,8 +833,8 @@ function paintGem(ctx, x, y, size, body, facet, seed, twinkle) {
 function drawGemFeature(ctx, feature, twinkle) {
   const { slot, color } = feature;
   const size = 24;
-  const body = color?.fill ?? "#e8615a";
-  const facet = color?.stroke ?? mix(body, PAPER, 0.45);
+  const body = color?.fill ?? RED;
+  const facet = color?.stroke ?? lighten(body, GEM_FACET_LIGHTEN);
   groundPatch(ctx, slot.x, slot.y + size * 0.98, size * 0.95, feature.biome, feature.seed);
   paintGem(ctx, slot.x, slot.y, size, body, facet, feature.seed, twinkle);
 }
@@ -836,7 +852,7 @@ function drawShellFeature(ctx, feature) {
       y: y + radius * 0.5 + Math.sin(angle) * radius,
     });
   }
-  inkShape(ctx, points, { fill: "#f6d9b0", lw: 3.6, seed, rough: 0.9 });
+  inkShape(ctx, points, { fill: lighten(ORANGE, 0.73), lw: 3.6, seed, rough: 0.9 });
   for (let i = -2; i <= 2; i += 1) {
     inkLine(
       ctx,
@@ -844,7 +860,7 @@ function drawShellFeature(ctx, feature) {
         { x: x + i * 5, y: y + radius * 0.45 },
         { x: x + i * 8.5, y: y - radius * 0.5 },
       ],
-      { stroke: alpha("#b4793a", 0.7), lw: 2.2, seed: seed + i + 5, rough: 0.5 }
+      { stroke: alpha(lighten(WOOD, 0.07), 0.7), lw: 2.2, seed: seed + i + 5, rough: 0.5 }
     );
   }
 }
@@ -853,15 +869,15 @@ function drawPebbleFeature(ctx, feature) {
   const { x, y } = feature.slot;
   const seed = feature.seed;
   groundPatch(ctx, x, y + 12, 26, feature.biome, seed);
-  inkEllipse(ctx, x, y, 21, 15, { fill: "#c3cad6", lw: 3.6, seed, rough: 1.4 });
-  inkEllipse(ctx, x - 6, y - 4, 7, 4, { fill: "#dde3eb", lw: 0, seed: seed + 2, rough: 0.6 });
+  inkEllipse(ctx, x, y, 21, 15, { fill: STONE, lw: 3.6, seed, rough: 1.4 });
+  inkEllipse(ctx, x - 6, y - 4, 7, 4, { fill: lighten(STONE, 0.55), lw: 0, seed: seed + 2, rough: 0.6 });
 }
 
 function drawPineconeFeature(ctx, feature) {
   const { x, y } = feature.slot;
   const seed = feature.seed;
   groundPatch(ctx, x, y + 20, 24, feature.biome, seed);
-  inkEllipse(ctx, x, y, 15, 22, { fill: "#a9702f", lw: 3.4, seed, rough: 1 });
+  inkEllipse(ctx, x, y, 15, 22, { fill: WOOD, lw: 3.4, seed, rough: 1 });
   for (let row = -2; row <= 2; row += 1) {
     inkLine(
       ctx,
@@ -870,7 +886,7 @@ function drawPineconeFeature(ctx, feature) {
         { x, y: y + row * 7 - 2 },
         { x: x + 11, y: y + row * 7 + 2 },
       ],
-      { stroke: alpha("#5d3a14", 0.75), lw: 2.2, seed: seed + row + 4, rough: 0.5 }
+      { stroke: alpha(darken(WOOD, 0.68), 0.75), lw: 2.2, seed: seed + row + 4, rough: 0.5 }
     );
   }
 }
@@ -885,7 +901,7 @@ function drawWildflowerFeature(ctx, feature) {
       { x, y: y + 22 },
       { x, y: y - 6 },
     ],
-    { stroke: "#4c8b34", lw: 3.4, seed, rough: 0.8 }
+    { stroke: STEM, lw: 3.4, seed, rough: 0.8 }
   );
   inkShape(
     ctx,
@@ -894,19 +910,19 @@ function drawWildflowerFeature(ctx, feature) {
       { x: x + 15, y: y + 2 },
       { x: x + 4, y: y + 15 },
     ],
-    { fill: "#4c8b34", lw: 2.4, seed: seed + 1, rough: 0.6 }
+    { fill: STEM, lw: 2.4, seed: seed + 1, rough: 0.6 }
   );
   for (let i = 0; i < 6; i += 1) {
     const angle = (i / 6) * Math.PI * 2;
     inkEllipse(ctx, x + Math.cos(angle) * 11, y - 10 + Math.sin(angle) * 11, 7.5, 6, {
-      fill: "#f2a516",
+      fill: AMBER,
       lw: 2.4,
       rotation: angle,
       seed: seed + i + 2,
       rough: 0.5,
     });
   }
-  inkCircle(ctx, x, y - 10, 6, { fill: "#f6e3c4", lw: 2.4, seed: seed + 11, rough: 0.5 });
+  inkCircle(ctx, x, y - 10, 6, { fill: lighten(STRAW, 0.53), lw: 2.4, seed: seed + 11, rough: 0.5 });
 }
 
 function drawCarrotFeature(ctx, feature) {
@@ -920,7 +936,7 @@ function drawCarrotFeature(ctx, feature) {
       { x: x + 13, y: y - 8 },
       { x, y: y + 26 },
     ],
-    { fill: "#ef8135", lw: 3.6, seed, rough: 0.9 }
+    { fill: ORANGE, lw: 3.6, seed, rough: 0.9 }
   );
   for (let i = -1; i <= 1; i += 1) {
     inkLine(
@@ -929,7 +945,7 @@ function drawCarrotFeature(ctx, feature) {
         { x: x + i * 6, y: y - 2 },
         { x: x + i * 9, y: y + 4 },
       ],
-      { stroke: alpha("#b8501a", 0.8), lw: 2, seed: seed + i + 3, rough: 0.4 }
+      { stroke: alpha(darken(ORANGE, 0.33), 0.8), lw: 2, seed: seed + i + 3, rough: 0.4 }
     );
   }
   [-1, 0, 1].forEach((i) => {
@@ -939,7 +955,7 @@ function drawCarrotFeature(ctx, feature) {
         { x, y: y - 8 },
         { x: x + i * 11, y: y - 26 },
       ],
-      { stroke: "#4c8b34", lw: 3.4, seed: seed + i + 7, rough: 0.8 }
+      { stroke: STEM, lw: 3.4, seed: seed + i + 7, rough: 0.8 }
     );
   });
 }
@@ -979,21 +995,21 @@ function paintSign(ctx, feature, boardColor, postColor) {
 }
 
 function drawSignFeature(ctx, feature) {
-  paintSign(ctx, feature, "#f2d79c", "#a9702f");
+  paintSign(ctx, feature, STRAW, WOOD);
 }
 
 function drawCaveSignFeature(ctx, feature) {
-  paintSign(ctx, feature, "#d6cbb4", "#7b6a51");
+  paintSign(ctx, feature, lighten(CHAR, 0.77), darken(STRAW, 0.6));
 }
 
 function drawPersonFeature(ctx, feature, time) {
   const { x, y } = feature.slot;
   const seed = feature.seed;
   const palettes = [
-    { shirt: "#5bb0d6", hat: "#e8615a", skin: "#f0cba6" },
-    { shirt: "#f2a516", hat: "#3f9052", skin: "#c98d52" },
-    { shirt: "#b78ad6", hat: "#5bb0d6", skin: "#f3d7b8" },
-    { shirt: "#7fbf6a", hat: "#f2d79c", skin: "#8a5f3c" },
+    { shirt: SKY, hat: RED, skin: SKINS[0] },
+    { shirt: AMBER, hat: LEAF, skin: SKINS[2] },
+    { shirt: PLUM, hat: SKY, skin: SKINS[1] },
+    { shirt: lighten(STEM, 0.33), hat: STRAW, skin: SKINS[3] },
   ];
   const palette = palettes[seed % palettes.length];
   const bob = Math.sin(time * 1.6 + seed) * 2;
@@ -1004,13 +1020,13 @@ function drawPersonFeature(ctx, feature, time) {
 
   // legs
   inkShape(ctx, [{ x: x - 11, y: y + 18 }, { x: x - 3, y: y + 18 }, { x: x - 3, y: y + 44 }, { x: x - 11, y: y + 44 }], {
-    fill: "#4a6a8a",
+    fill: darken(SKY, 0.44),
     lw: 3,
     seed: seed + 1,
     rough: 0.6,
   });
   inkShape(ctx, [{ x: x + 3, y: y + 18 }, { x: x + 11, y: y + 18 }, { x: x + 11, y: y + 44 }, { x: x + 3, y: y + 44 }], {
-    fill: "#4a6a8a",
+    fill: darken(SKY, 0.44),
     lw: 3,
     seed: seed + 2,
     rough: 0.6,
@@ -1074,7 +1090,7 @@ function drawShipFeature(ctx, feature, time) {
       { x: 44, y: 34 },
       { x: -44, y: 34 },
     ],
-    { fill: "#c9603f", lw: 4.5, seed, rough: 1.2 }
+    { fill: darken(RED, 0.15), lw: 4.5, seed, rough: 1.2 }
   );
   inkLine(
     ctx,
@@ -1092,7 +1108,7 @@ function drawShipFeature(ctx, feature, time) {
       { x: 4, y: -78 },
       { x: -4, y: -78 },
     ],
-    { fill: "#a9702f", lw: 3.2, seed: seed + 2, rough: 0.6 }
+    { fill: WOOD, lw: 3.2, seed: seed + 2, rough: 0.6 }
   );
   inkShape(
     ctx,
@@ -1110,7 +1126,7 @@ function drawShipFeature(ctx, feature, time) {
       { x: -40, y: -46 },
       { x: -6, y: -22 },
     ],
-    { fill: "#f2d79c", lw: 4, seed: seed + 4, rough: 1.2 }
+    { fill: STRAW, lw: 4, seed: seed + 4, rough: 1.2 }
   );
   inkShape(
     ctx,
@@ -1119,7 +1135,7 @@ function drawShipFeature(ctx, feature, time) {
       { x: 26, y: -80 },
       { x: -4, y: -74 },
     ],
-    { fill: "#e8615a", lw: 2.6, seed: seed + 5, rough: 0.6 }
+    { fill: RED, lw: 2.6, seed: seed + 5, rough: 0.6 }
   );
   ctx.restore();
 }
@@ -1128,10 +1144,10 @@ function drawSandcastleFeature(ctx, feature) {
   const { x, y } = feature.slot;
   const seed = feature.seed;
   groundPatch(ctx, x, y + 26, 40, feature.biome, seed);
-  inkRect(ctx, x - 26, y - 2, 52, 28, { fill: "#edc784", lw: 3.6, radius: 4, seed, rough: 1 });
+  inkRect(ctx, x - 26, y - 2, 52, 28, { fill: darken(STRAW, 0.07), lw: 3.6, radius: 4, seed, rough: 1 });
   [-1, 1].forEach((side) => {
     inkRect(ctx, x + side * 26 - 11, y - 20, 22, 46, {
-      fill: "#f2d79c",
+      fill: STRAW,
       lw: 3.6,
       radius: 4,
       seed: seed + side + 3,
@@ -1144,7 +1160,7 @@ function drawSandcastleFeature(ctx, feature) {
       { x, y: y - 2 },
       { x, y: y - 26 },
     ],
-    { stroke: "#a9702f", lw: 3, seed: seed + 6, rough: 0.6 }
+    { stroke: WOOD, lw: 3, seed: seed + 6, rough: 0.6 }
   );
   inkShape(
     ctx,
@@ -1153,7 +1169,7 @@ function drawSandcastleFeature(ctx, feature) {
       { x: x + 22, y: y - 20 },
       { x: x + 2, y: y - 14 },
     ],
-    { fill: "#e8615a", lw: 2.6, seed: seed + 7, rough: 0.5 }
+    { fill: RED, lw: 2.6, seed: seed + 7, rough: 0.5 }
   );
 }
 
@@ -1163,7 +1179,7 @@ function drawOwlFeature(ctx, feature, time) {
   // Blinks roughly every eight seconds (2*pi / 0.8).
   const blink = Math.sin(time * 0.8 + seed) > 0.97;
   groundPatch(ctx, x, y + 28, 28, feature.biome, seed);
-  inkEllipse(ctx, x, y, 24, 30, { fill: "#b07d44", lw: 4, seed, rough: 1.2 });
+  inkEllipse(ctx, x, y, 24, 30, { fill: lighten(WOOD, 0.1), lw: 4, seed, rough: 1.2 });
   inkShape(
     ctx,
     [
@@ -1171,7 +1187,7 @@ function drawOwlFeature(ctx, feature, time) {
       { x: x - 5, y: y - 30 },
       { x: x - 3, y: y - 16 },
     ],
-    { fill: "#b07d44", lw: 3.2, seed: seed + 1, rough: 0.6 }
+    { fill: lighten(WOOD, 0.1), lw: 3.2, seed: seed + 1, rough: 0.6 }
   );
   inkShape(
     ctx,
@@ -1180,7 +1196,7 @@ function drawOwlFeature(ctx, feature, time) {
       { x: x + 5, y: y - 30 },
       { x: x + 3, y: y - 16 },
     ],
-    { fill: "#b07d44", lw: 3.2, seed: seed + 2, rough: 0.6 }
+    { fill: lighten(WOOD, 0.1), lw: 3.2, seed: seed + 2, rough: 0.6 }
   );
   inkCircle(ctx, x - 9, y - 8, 10, { fill: PAPER, lw: 3, seed: seed + 3, rough: 0.6 });
   inkCircle(ctx, x + 9, y - 8, 10, { fill: PAPER, lw: 3, seed: seed + 4, rough: 0.6 });
@@ -1198,7 +1214,7 @@ function drawOwlFeature(ctx, feature, time) {
       { x: x + 4, y: y + 1 },
       { x, y: y + 9 },
     ],
-    { fill: "#f2a516", lw: 2.4, seed: seed + 5, rough: 0.4 }
+    { fill: AMBER, lw: 2.4, seed: seed + 5, rough: 0.4 }
   );
 }
 
@@ -1216,7 +1232,7 @@ function drawKiteFeature(ctx, feature, time) {
       { x, y: y + 30 },
       { x: x - 24, y },
     ],
-    { fill: "#5bb0d6", lw: 4, seed, rough: 0.8 }
+    { fill: SKY, lw: 4, seed, rough: 0.8 }
   );
   inkLine(
     ctx,
@@ -1247,7 +1263,7 @@ function drawKiteFeature(ctx, feature, time) {
         { x: tail[i].x + 7, y: tail[i].y },
         { x: tail[i].x - 7, y: tail[i].y + 4 },
       ],
-      { fill: "#e8615a", lw: 2, seed: seed + i + 6, rough: 0.3 }
+      { fill: RED, lw: 2, seed: seed + i + 6, rough: 0.3 }
     );
   });
   ctx.restore();
@@ -1257,13 +1273,13 @@ function drawTractorFeature(ctx, feature) {
   const { x, y } = feature.slot;
   const seed = feature.seed;
   groundPatch(ctx, x, y + 30, 48, feature.biome, seed);
-  inkRect(ctx, x - 32, y - 6, 62, 26, { fill: "#3f9052", lw: 4, radius: 6, seed, rough: 1 });
-  inkRect(ctx, x - 8, y - 28, 30, 24, { fill: "#4faa62", lw: 3.6, radius: 5, seed: seed + 1, rough: 0.8 });
-  inkRect(ctx, x - 3, y - 24, 18, 14, { fill: "#bfe0ea", lw: 2.6, radius: 3, seed: seed + 2, rough: 0.6 });
-  inkCircle(ctx, x - 19, y + 22, 13, { fill: "#4a4038", lw: 3.6, seed: seed + 3, rough: 0.7 });
-  inkCircle(ctx, x - 19, y + 22, 5, { fill: "#f2d79c", lw: 2.4, seed: seed + 4, rough: 0.4 });
-  inkCircle(ctx, x + 21, y + 18, 18, { fill: "#4a4038", lw: 3.6, seed: seed + 5, rough: 0.8 });
-  inkCircle(ctx, x + 21, y + 18, 7, { fill: "#f2d79c", lw: 2.4, seed: seed + 6, rough: 0.4 });
+  inkRect(ctx, x - 32, y - 6, 62, 26, { fill: LEAF, lw: 4, radius: 6, seed, rough: 1 });
+  inkRect(ctx, x - 8, y - 28, 30, 24, { fill: lighten(LEAF, 0.12), lw: 3.6, radius: 5, seed: seed + 1, rough: 0.8 });
+  inkRect(ctx, x - 3, y - 24, 18, 14, { fill: lighten(SKY, 0.63), lw: 2.6, radius: 3, seed: seed + 2, rough: 0.6 });
+  inkCircle(ctx, x - 19, y + 22, 13, { fill: CHAR, lw: 3.6, seed: seed + 3, rough: 0.7 });
+  inkCircle(ctx, x - 19, y + 22, 5, { fill: STRAW, lw: 2.4, seed: seed + 4, rough: 0.4 });
+  inkCircle(ctx, x + 21, y + 18, 18, { fill: CHAR, lw: 3.6, seed: seed + 5, rough: 0.8 });
+  inkCircle(ctx, x + 21, y + 18, 7, { fill: STRAW, lw: 2.4, seed: seed + 6, rough: 0.4 });
 }
 
 function drawPlaceholderFeature(ctx, feature) {
@@ -1622,7 +1638,7 @@ function drawWinScreen(ctx, width, height, frame, successAction, time, buffer) {
     const speed = 40 + noise(i, 2) * 70;
     const x = frame.x + noise(i, 5) * frame.width;
     const y = frame.y + ((noise(i, 9) * frame.height + time * speed) % (frame.height + 40)) - 20;
-    const colors = ["#e8615a", "#f2a516", "#5bb0d6", "#3f9052", "#b78ad6"];
+    const colors = [RED, AMBER, SKY, LEAF, PLUM];
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(time * 2 + i);
@@ -1659,15 +1675,7 @@ function drawWinScreen(ctx, width, height, frame, successAction, time, buffer) {
   drawExplorer(ctx, centreX, explorerY, scale * 1.45, { bob: Math.sin(time * 3) * 5 });
 
   // The haul, fanned out at her feet.
-  const haul = [
-    { fill: "#e8615a", stroke: "#f09a95" },
-    { fill: "#5bb0d6", stroke: "#93cbe4" },
-    { fill: "#3fa34d", stroke: "#7ec287" },
-    { fill: "#b78ad6", stroke: "#cfb0e5" },
-    { fill: "#f2a516", stroke: "#f6c463" },
-    { fill: "#ef8fb4", stroke: "#f4b4cd" },
-    { fill: "#5f9ea0", stroke: "#94bfc0" },
-  ];
+  const haul = GEM_COLORS;
   haul.forEach((colour, index) => {
     const spread = (index - (haul.length - 1) / 2) / ((haul.length - 1) / 2);
     const x = centreX + spread * frame.width * 0.33;
@@ -1714,7 +1722,7 @@ function paintBaseLayer(canvas, width, height, node, island, biome, seed) {
     const hasCoast = DIRECTIONS.some((direction) => insets[direction] > 0);
 
     if (hasCoast) {
-      ctx.fillStyle = biome.water || "#5bb0d6";
+      ctx.fillStyle = biome.water || SKY;
       ctx.fillRect(frame.x - 4, frame.y - 4, frame.width + 8, frame.height + 8);
     }
 
