@@ -134,6 +134,28 @@ does not start by rebuilding what this one figured out.
       to drive the real game headlessly with the preinstalled Playwright,
       without adding a dependency to the repo.
 - [x] Record the three renderer gotchas in `docs/visual-v2.md` §10.
+- [x] Cold-read test of the documentation, 2026-09-20: a reader with no context
+      was asked to work out how to draw a new feature using only the repo. It
+      got the outline colour, weights, no-gradients rule, motion contract,
+      seeding rule and the gallery right — and found six defects, now fixed:
+      the owl's blink rate was documented as 4s when the code gives 7.9s; the
+      idle-motion band was stated in Hz when the code uses radians/second, and
+      the numbers did not match either way; `CLAUDE.md` and `AGENTS.md` both
+      said to open `index.html` directly, which ES modules make impossible; and
+      the untested-coverage figure disagreed with `decisions.md`.
+- [x] Two gaps the cold read found, now documented: prop body colours were in
+      no registry (51 hex literals in `scene-renderer.js`), and nothing said
+      that adding a feature type means touching four hand-maintained lists.
+- [?] **Open, raised by the cold read:** `rendering-v1.md`'s feature
+      architecture — per-feature `draw()`/`promptAnchor()` hooks, biome slot
+      queries, constraint-based placement — was never built. `docs/README.md`
+      now says so, but the section itself still reads as a specification.
+      Either build it, cut it, or mark it superseded in the file.
+- [?] **Open:** `visual-v1.md` says completed non-movement actions "disappear
+      entirely". [D2](docs/decisions.md) says completion and removal are
+      separate, and cites `initial-full-design.md` without mentioning that v1
+      says the opposite. The code keeps the art and drops the prompt. By this
+      repo's own rule that is an unrecorded divergence; D2 should name v1.
 
 ## Track: Infrastructure and Test Coverage
 
@@ -146,7 +168,7 @@ Added 2026-09-18 after a repo review.
       cancels superseded in-flight runs
 - [?] Add a headless browser smoke test to CI. Playwright can drive the real
       game — loading the page, typing prompts, asserting no console errors —
-      covering the ~60% of `src/` with no tests today
+      covering the ~65% of `src/` with no tests today
       ([D4](docs/decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
       **Blocked on a decision:** Playwright would be this repo's first
       dependency and would require a `package.json`, breaking the

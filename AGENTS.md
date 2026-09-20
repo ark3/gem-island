@@ -43,7 +43,10 @@ resets completely when finished.
 - **No build step.** Do not introduce bundlers (Webpack/Vite) or transpilers.
 - **Imports:** always include the `.js` extension, e.g.
   `import { x } from "./utils.js"`.
-- **Run the game:** open `index.html` in a browser. There is nothing to build.
+- **Run the game:** serve the folder and open `index.html` — for example
+  `npx http-server -p 8765 -c-1 .`. There is nothing to build, but `index.html`
+  and `tools/gallery.html` load ES modules, which browsers refuse over
+  `file://`, so opening the file directly fails.
 
 **Testing:**
 

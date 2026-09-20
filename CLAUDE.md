@@ -17,5 +17,6 @@ Quick orientation:
 | Where the code deliberately differs from the design | [`docs/decisions.md`](docs/decisions.md) |
 | Open and completed work | [`tasks.md`](tasks.md) |
 
-Run the tests with `node --test`. Open `index.html` in a browser to play; there
-is no build step.
+Run the tests with `node --test`. To play, serve the folder and open
+`index.html` (`npx http-server -p 8765 -c-1 .`) — there is no build step, but
+ES modules do not load over `file://`.

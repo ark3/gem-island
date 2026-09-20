@@ -90,6 +90,22 @@ Gem colours live in `src/island.generator.js` as `{ fill, stroke }` pairs. In
 this style `fill` is the body and `stroke` is the **facet tint** drawn inside
 the gem — the outline itself is always `INK`, like everything else.
 
+### Object colours — a known gap
+
+There is **no token, list or rule for the body colour of a prop**. The palette
+above closes the ink, paper, state, biome and gem colours, and stops. Every
+feature's body colour is a bare hex literal inside its own painter in
+`src/scene-renderer.js` — 51 distinct ones, in no registry.
+
+Until that is fixed, the convention holding the art together is reuse. These
+are the recurring literals, in order of how often they appear:
+
+`#e8615a` red · `#f2d79c` straw · `#5bb0d6` sky · `#f2a516` amber ·
+`#3f9052` leaf · `#a9702f` wood · `#b78ad6` violet · `#b07d44` tan
+
+Pick from those before inventing a colour, and never fill a prop with the
+biome's `dominantColor` — that is the land it stands on.
+
 ---
 
 ## 3. Line and shape
@@ -209,13 +225,18 @@ life and confirms actions; it never asks to be watched.**
 | gems | a sparkle that swells and fades |
 | people | a gentle bob, each on their own phase |
 | kite, ship | sway and rock |
-| owl | blinks about every four seconds |
+| owl | blinks about every eight seconds |
 | moving between nodes | the world scrolls *against* your travel, the way it does when you walk: head north and the land slides down past you while the new place arrives over the top edge |
 | picking something up | a short burst of ink stars at the object |
 | winning | confetti, a bouncing headline |
 
-Timing: node transitions take 0.34s on an ease-in-out. Idle motion runs at
-roughly 0.3–0.5Hz. Nothing loops faster than about 2Hz.
+Timing: node transitions take 0.34s on an ease-in-out.
+
+Idle motion is written as `Math.sin(time * k + seed)`, where **`k` is radians
+per second** — not Hz, which is the easy misreading and gives something
+effectively motionless. Shipped values run `k` = 0.8 to 2.0, or about 0.13 to
+0.32 Hz: the ship rocks at 1.1, a person bobs at 1.6, the explorer breathes at
+2.0. Stay inside that band; nothing should loop faster than about 3 rad/s.
 
 **Reduced motion.** The whole renderer takes `time` in seconds as its only
 animation input. When `prefers-reduced-motion: reduce` is set, `time` is pinned
@@ -275,6 +296,19 @@ own modules, with no build step and no dependencies. Open it after any renderer 
 faster than hunting for a rock biome in a real run, and it is the closest thing
 the renderer has to a regression test
 ([D4](decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
+
+### Adding a new feature type
+
+Four registries are hand-maintained and there is no code path that will warn
+you about missing one:
+
+1. `src/features.js` — `FEATURE_LIST`, for the id and title.
+2. `src/scene-renderer.js` — `FEATURE_PAINTERS`, or it draws as a `?` disc.
+3. `src/scene-renderer.js` — `PROMPT_ANCHORS`, or its label uses the default
+   spacing, which is too tight for anything tall.
+4. `tools/gallery.html` — `FEATURE_TYPES`, or it never appears in the gallery.
+
+Placement in a real island is the generator's job, separately.
 
 ### Three things that will bite
 

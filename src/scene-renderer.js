@@ -1160,7 +1160,7 @@ function drawSandcastleFeature(ctx, feature) {
 function drawOwlFeature(ctx, feature, time) {
   const { x, y } = feature.slot;
   const seed = feature.seed;
-  // Blinks roughly every four seconds.
+  // Blinks roughly every eight seconds (2*pi / 0.8).
   const blink = Math.sin(time * 0.8 + seed) > 0.97;
   groundPatch(ctx, x, y + 28, 28, feature.biome, seed);
   inkEllipse(ctx, x, y, 24, 30, { fill: "#b07d44", lw: 4, seed, rough: 1.2 });
