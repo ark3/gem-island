@@ -86,6 +86,18 @@ found by looking, and two of them were invisible in a normal playthrough.
      cheapest way to detect that a move landed.
    - Reduced motion is verifiable: grab two canvas frames a second apart while
      idle and assert they are byte-identical.
+3. **Prove a refactor changed nothing** by diffing the gallery against the
+   commit you started from. `git archive HEAD | tar -x -C <tmp>` and serve that
+   on a second port, then load both galleries and compare
+   `canvas.toDataURL()` per `figcaption`.
+   - Compare **canvas contents, not page screenshots**. An element screenshot
+     moves when anything above it changes height, and a half-pixel shift lights
+     up every outline on the page — the September 2026 palette work spent a
+     round chasing a 17% "regression" that was entirely sub-pixel layout.
+   - `makeIsland()` in the gallery numbers islands in call order, and that
+     number seeds the hand-drawn wobble. Adding a section above an existing one
+     reseeds everything below it, which looks exactly like a rendering change.
+     Populate new sections at the end of the module.
 
 **Do not add Playwright to the repository.** No `package.json`, no lockfile, no
 CI job — that decision is still open and is tracked in `tasks.md`. Use the
