@@ -95,15 +95,28 @@ the gem — the outline itself is always `INK`, like everything else.
 There is **no token, list or rule for the body colour of a prop**. The palette
 above closes the ink, paper, state, biome and gem colours, and stops. Every
 feature's body colour is a bare hex literal inside its own painter in
-`src/scene-renderer.js` — 51 distinct ones, in no registry.
+`src/scene-renderer.js` — 51 distinct literals in the file, in no registry.
 
-Until that is fixed, the convention holding the art together is reuse. These
-are the recurring literals, in order of how often they appear:
+Until that is fixed, the convention holding the art together is reuse. Every
+literal used three or more times, with its count:
 
-`#e8615a` red · `#f2d79c` straw · `#5bb0d6` sky · `#f2a516` amber ·
-`#3f9052` leaf · `#a9702f` wood · `#b78ad6` violet · `#b07d44` tan
+| | Colour | Uses | Seen on |
+|---|---|---|---|
+| 🟥 | `#e8615a` | 7 | flags, gem bodies, confetti |
+| 🟨 | `#f2d79c` | 6 | sign boards, sails, sandcastle |
+| 🟦 | `#5bb0d6` | 6 | kite, tractor glass, confetti |
+| 🟧 | `#f2a516` | 5 | flower petals, owl beak |
+| 🟩 | `#3f9052` | 5 | tractor body, confetti |
+| 🟫 | `#a9702f` | 4 | posts, masts, pinecone |
+| 🟪 | `#b78ad6` | 3 | confetti, NPC clothing |
+| 🟤 | `#b07d44` | 3 | owl |
+| 🟢 | `#4c8b34` | 3 | stems and leaves |
 
-Pick from those before inventing a colour, and never fill a prop with the
+Two more recur but are **not** prop colours — `#cbb994` (4) and `#c79a4e` (3)
+appear almost entirely as `biome.ground ||` / `biome.detail ||` fallbacks for a
+biome missing a tint. Do not read them as part of the object palette.
+
+Pick from the table before inventing a colour, and never fill a prop with the
 biome's `dominantColor` — that is the land it stands on.
 
 ---
