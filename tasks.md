@@ -77,11 +77,18 @@ when the integration lands** — until then the code does not yet diverge.
       Removes the tier machinery (`src/prompt-lists.js`, the `?tier=`
       parameter) and rewrites D1's reversal section, which currently describes
       the tiers.
-- [ ] **Decide the nonsense mix before or after her first session.** At the
-      difficulty she settles into (~1.9), about 86% of prompts are nonsense.
-      Either lower the familiarity weight first, or let one session tell you
-      whether she minds. Run `node scripts/simulate-session.mjs` to see the
-      effect of a change without spending a session on it.
+- [x] **Decide the nonsense mix before or after her first session.** After:
+      leave the familiarity weight at 1.0 until she plays. The 86% figure that
+      prompted the question turned out to be an artifact of the simulated
+      player rather than a property of the design, and the honest range is
+      7%-86% depending on a number only she can supply. See the 2026-09-20
+      correction in [D6](docs/decisions.md#d6--prompt-difficulty-adapts-to-typing-speed).
+- [ ] **Re-decide the nonsense mix after her first session**, with real pace
+      numbers in hand. Lowering the familiarity weight yields *more* real
+      words, not fewer — it drops nonsense below her band and pulls
+      mid-frequency words into it. Raising it past ~2 collapses the band to a
+      handful of entries. Run `node scripts/simulate-session.mjs` to see the
+      effect of a change, but treat its player model as the guess it is.
 - [ ] Tune the weights against a real session. The current values are
       reasoned, not measured — particularly `fastIntervalMs` / `slowIntervalMs`
       in `typing-estimate.js`, which are guesses at a seven-year-old's pace.

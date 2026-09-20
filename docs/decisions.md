@@ -261,9 +261,26 @@ read the reasons before proposing any of them again.
   pool fills everything below roughly 2.4 precisely because real words do not
   live there. By target 2.5 it is 30%, by 2.8 it is 3%. The model is behaving
   correctly; whether a child who can read enjoys a screen of `aaf, gha, fsg`
-  is a separate question, and the familiarity weight is the lever. **Open:**
-  pre-adjust it, or let a real session decide. Related: around 2.2 a single
-  screen mixes registers — `hla`, `side`, `gf`, `digital` together.
+  is a separate question. Related: around 2.2 a single screen mixes registers
+  — `hla`, `side`, `gf`, `digital` together.
+
+  **Corrected 2026-09-20: that 86% is an artifact of the simulated player, not
+  a property of the design.** The player's pace is proportional to the full
+  score, familiarity term included, so the model assumes a nonsense string
+  costs her exactly what the familiarity weight guesses it costs. The guess is
+  then read back out as a finding. Holding everything else fixed and changing
+  only that assumption, she settles at 1.93 with 86% nonsense at +1.0/key, and
+  at 2.67 with 18% nonsense at +0.35/key — if nonsense is easier for her than
+  the weight assumes, she climbs past it and the problem self-corrects.
+
+  The familiarity weight is still the lever, but it runs the opposite way to
+  the obvious guess: *lowering* it yields more real words, because it drops
+  nonsense below her band and pulls mid-frequency words down into it. At
+  weight 0 the band near 1.9 holds 396 real words and 2 nonsense; at 2.5 the
+  whole band collapses to 5 entries and selection degenerates to repeating
+  them. **Resolved: do not pre-tune.** The answer ranges over 7%-86% on a
+  number only a real session can supply, and no amount of simulation narrows
+  it. Left at 1.0 until she plays.
 - **The rise/fall asymmetry was checked and is safe.** Rising 0.15 and falling
   0.08 is a ratchet in principle: noisy input could drift the target upward
   without any real improvement. Simulation shows it self-limits, because a
