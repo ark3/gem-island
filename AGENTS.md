@@ -60,6 +60,34 @@ node --test tests/engine.test.js   # single file
 - Tests use seeded random for deterministic generation — see
   `tests/helpers/random.js`.
 
+**Working on visuals:**
+
+Look at the change. Every visual bug found in the September 2026 overhaul was
+found by looking, and two of them were invisible in a normal playthrough.
+
+1. **Open `tools/gallery.html` first.** It renders every biome, coastline,
+   feature, map state, typing state and the win screen from the game's own
+   modules, on one page, with no setup. Most visual work needs nothing else.
+2. **Drive the real game** for the things the gallery cannot show: page chrome
+   and layout, the node transition, and frame rate.
+   - Serve the folder first — `npx http-server -p 8765 -c-1 .`. ES modules do
+     not load over `file://`, so opening `index.html` directly will fail.
+   - Claude Code web sessions have Chromium and Playwright preinstalled:
+     `require` Playwright from `/opt/node22/lib/node_modules/` and launch with
+     `executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"`.
+     Check the `chromium-*` directory name; the build number changes.
+   - For a reproducible island, override `Math.random` in `addInitScript`
+     before the page loads — the seed is drawn from it at boot.
+   - To activate a prompt, send the characters **then Enter**; a match alone
+     does nothing. `document.title` carries the current node, which is the
+     cheapest way to detect that a move landed.
+   - Reduced motion is verifiable: grab two canvas frames a second apart while
+     idle and assert they are byte-identical.
+
+**Do not add Playwright to the repository.** No `package.json`, no lockfile, no
+CI job — that decision is still open and is tracked in `tasks.md`. Use the
+preinstalled copy from a scratch directory and leave nothing behind.
+
 ## 4. Architecture
 
 The codebase follows a **functional core, imperative shell** pattern.
@@ -79,6 +107,8 @@ The codebase follows a **functional core, imperative shell** pattern.
 
 - **`src/main.js`** — DOM/Canvas rendering, keyboard input, game loop. Connects
   the pure logic to the browser.
+- **`src/map-renderer.js`** — the island map. Split out of `main.js` so it can
+  be reviewed in `tools/gallery.html` without playing a real game.
 - **`src/scene-renderer.js`** — canvas scene drawing, extracted from `main.js`.
   Paints the static layers of a node once into an offscreen canvas and animates
   everything above them, which is why a fully animated scene is cheap.

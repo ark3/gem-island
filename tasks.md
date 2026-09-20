@@ -121,6 +121,20 @@ seams for exactly this work.
 - [x] Extract scene rendering into a standalone module (`8a4c114`)
 - [x] Add `src/ink.js` and redraw everything through it (visual overhaul, above)
 
+## Track: Visual Iteration Support
+
+Added 2026-09-20, after the overhaul merged, so the next round of visual work
+does not start by rebuilding what this one figured out.
+
+- [x] Extract the map into `src/map-renderer.js`. It was buried in `main.js`
+      and could only be seen by playing far enough to discover nodes.
+- [x] `tools/gallery.html` covers the map at four stages of discovery, which is
+      where the completion check's contrast problem would have been caught.
+- [x] Record how to iterate on visuals in `AGENTS.md`: gallery first, then how
+      to drive the real game headlessly with the preinstalled Playwright,
+      without adding a dependency to the repo.
+- [x] Record the three renderer gotchas in `docs/visual-v2.md` §10.
+
 ## Track: Infrastructure and Test Coverage
 
 Added 2026-09-18 after a repo review.

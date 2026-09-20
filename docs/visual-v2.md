@@ -261,19 +261,34 @@ glancing at: where you are, the map, what is in your pockets.
 | Concern | File |
 |---|---|
 | tokens, hand-drawn primitives, texture, text | `src/ink.js` |
+| the island map | `src/map-renderer.js` |
 | biome palettes | `src/biomes.js` |
 | the layer stack, biome art, features, prompts | `src/scene-renderer.js` |
 | the explorer | `src/explorer.js` |
-| animation loop, transitions, map, page wiring | `src/main.js` |
+| animation loop, transitions, page wiring | `src/main.js` |
 | page chrome and CSS tokens | `index.html` |
-| every biome and feature on one page | `tools/gallery.html` |
+| the whole art set on one page | `tools/gallery.html` |
 
-`tools/gallery.html` renders the whole art set — biomes, coastlines, typing
-states, the win screen, every feature — from the game's own modules, with no
-build step and no dependencies. Open it after any renderer change; it is far
+`tools/gallery.html` renders the whole art set — biomes, coastlines, the map at
+four stages, typing states, the win screen and every feature — from the game's
+own modules, with no build step and no dependencies. Open it after any renderer change; it is far
 faster than hunting for a rock biome in a real run, and it is the closest thing
 the renderer has to a regression test
 ([D4](decisions.md#d4--canvas-and-dom-code-is-intentionally-untested)).
+
+### Three things that will bite
+
+Each of these cost an afternoon during the overhaul.
+
+1. **`traceSmooth` on a four-point polygon returns a circle.** The midpoint
+   quadratics have nothing to hold the edges straight. Smoothing needs the
+   dense point list `roughen()` produces, so the two always travel together —
+   if `rough` is 0, use `traceLinear`.
+2. **The static layer is cached per node**, keyed on id, size, biome and which
+   sides are open. Two nodes sharing an id share a background. Real islands
+   have unique ids; hand-built test data often does not.
+3. **Wobble seeded from anything that changes per frame makes the scene
+   shimmer.** Seed from the node or feature id, never from `time`.
 
 ---
 

@@ -77,6 +77,9 @@
     <h2>Coastlines</h2>
     <div class="grid" id="coasts"></div>
 
+    <h2>Map</h2>
+    <div class="grid sheet" id="maps"></div>
+
     <h2>States</h2>
     <div class="grid" id="states"></div>
 
@@ -86,6 +89,7 @@
     <script type="module">
       import { listBiomes } from "../src/biomes.js";
       import { renderSceneToCanvas } from "../src/scene-renderer.js";
+      import { renderMapToCanvas } from "../src/map-renderer.js";
 
       const SCENE_WIDTH = 640;
       const SCENE_HEIGHT = 480;
@@ -218,6 +222,78 @@
           actions: moveActions(open),
           time: 2.4,
         });
+      });
+
+      // --- The map, at the stages it passes through -------------------------
+      // The check mark is the thing to watch here: it has to read against every
+      // biome colour, not just the sandy ones.
+      const mapsRoot = document.getElementById("maps");
+
+      function makeMapIsland() {
+        // A blob of island wide enough to show every biome side by side.
+        const layout = [
+          "..FFP.",
+          ".RFFPP",
+          "SSRRPF",
+          "SSDRFF",
+          ".SS.R.",
+        ];
+        const codes = { S: "sand", R: "rock", F: "forest", P: "plains", D: "dock", A: "farm" };
+        const nodes = {};
+        layout.forEach((row, y) => {
+          row.split("").forEach((code, x) => {
+            if (code === ".") return;
+            const id = `n${x}_${y}`;
+            nodes[id] = {
+              id,
+              title: id,
+              biome: codes[code],
+              position: { x, y },
+              features: [{ id: `${id}_f` }],
+              actions: [],
+            };
+          });
+        });
+        return { nodes, requiredGems: 10 };
+      }
+
+      function mapState(island, { visitedFraction, completedFraction, currentIndex }) {
+        const ids = Object.keys(island.nodes);
+        const visited = ids.slice(0, Math.round(ids.length * visitedFraction));
+        const completed = visited.slice(0, Math.round(visited.length * completedFraction));
+        return {
+          status: "playing",
+          visitedNodes: new Set(visited),
+          completedFeatures: new Set(completed.map((id) => `${id}_f`)),
+          currentNodeId: visited[Math.min(currentIndex, visited.length - 1)] ?? ids[0],
+          inventory: {},
+        };
+      }
+
+      function drawMap(caption, state, island, size = 260) {
+        const figure = document.createElement("figure");
+        const canvas = document.createElement("canvas");
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        canvas.style.aspectRatio = "1 / 1";
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        renderMapToCanvas(ctx, size, size, { island, state });
+        const label = document.createElement("figcaption");
+        label.textContent = caption;
+        figure.append(canvas, label);
+        mapsRoot.append(figure);
+      }
+
+      const mapIsland = makeMapIsland();
+      [
+        ["just landed", { visitedFraction: 0.05, completedFraction: 0, currentIndex: 0 }],
+        ["exploring", { visitedFraction: 0.4, completedFraction: 0.3, currentIndex: 5 }],
+        ["most of the way", { visitedFraction: 0.8, completedFraction: 0.7, currentIndex: 12 }],
+        ["all found", { visitedFraction: 1, completedFraction: 1, currentIndex: 20 }],
+      ].forEach(([caption, shape]) => {
+        drawMap(caption, mapState(mapIsland, shape), mapIsland);
       });
 
       // --- Typing feedback and the win screen -------------------------------
