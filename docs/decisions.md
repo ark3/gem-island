@@ -56,10 +56,24 @@ that `initial-full-design.md` becomes accurate again.
 - **Extends:** `initial-full-design.md`, which defines an action lifecycle of
   Available → Completed but says nothing about whether a completed action
   disappears.
+- **Narrows:** `visual-v1.md`, "Completed non-movement actions disappear
+  entirely." Recorded 2026-09-20; it should have been named here in the first
+  place, since an unrecorded divergence is exactly what this file exists to
+  prevent.
 
 An action or feature being *completed* (logic state) is independent of it being
 *removed* from the scene (visual state). Removal is driven by an explicit
 removable flag, not by completion status.
+
+**On v1's "disappear entirely":** the word doing the damage is *entirely*. A
+completed non-movement action does disappear — its prompt is dropped
+(`scene-renderer.js`, `action.kind !== "move" && action.isCompleted`). Its
+**feature** does not, unless the feature is flagged `removable`
+(`!(feature.removable && completedFeatures.has(feature.id))`). So a gem is
+taken and gone; a signpost you have read keeps standing there with nothing to
+type at it. v1 was describing actions and reads as though it were describing
+the scene, which is a narrower conflict than it first appears — but a real
+one.
 
 **Rationale:** quest givers must stay visible and interactive after their quest
 completes, and talk features must mark complete for node-completion purposes

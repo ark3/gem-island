@@ -173,16 +173,25 @@ does not start by rebuilding what this one figured out.
       in a diff of that file is now a question worth asking in review. Verified
       byte-identical: every figure in the gallery matched the previous commit
       exactly.
-- [?] **Open, raised by the cold read:** `rendering-v1.md`'s feature
+- [?] **Still open, but no longer a trap:** `rendering-v1.md`'s feature
       architecture — per-feature `draw()`/`promptAnchor()` hooks, biome slot
-      queries, constraint-based placement — was never built. `docs/README.md`
-      now says so, but the section itself still reads as a specification.
-      Either build it, cut it, or mark it superseded in the file.
-- [?] **Open:** `visual-v1.md` says completed non-movement actions "disappear
-      entirely". [D2](docs/decisions.md) says completion and removal are
-      separate, and cites `initial-full-design.md` without mentioning that v1
-      says the opposite. The code keeps the art and drops the prompt. By this
-      repo's own rule that is an unrecorded divergence; D2 should name v1.
+      queries, constraint-based placement — was never built. Of the three
+      options here (build it, cut it, mark it), the third is done: the section
+      now opens with a note saying it describes nothing, and a table mapping
+      each idea in it to what the code has instead. **The design call is
+      yours** — the concerns it raises are real, and the code handles them more
+      crudely (five fixed slots, identical in every biome, assigned by the
+      generator rather than negotiated). Worth building only if feature
+      placement starts looking cramped or repetitive.
+- [x] **Recorded, 2026-09-20.** `visual-v1.md` says completed non-movement
+      actions "disappear entirely"; [D2](docs/decisions.md) said completion and
+      removal are separate while citing only `initial-full-design.md`. D2 now
+      names v1 under **Narrows**, and says what the code actually does: the
+      prompt is always dropped, the feature stays unless flagged `removable`.
+      A gem is taken and gone; a signpost you have read keeps standing there.
+      The conflict was narrower than the entry above assumed — v1 was
+      describing actions and reads as though it described the scene — but it
+      was real and unrecorded, which is the thing this repo's rule is for.
 
 ## Track: Infrastructure and Test Coverage
 
