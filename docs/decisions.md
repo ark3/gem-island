@@ -58,13 +58,15 @@ cannot practise touch typing at all, because there is no word shape to learn.
 [D6](#d6--prompt-difficulty-adapts-to-typing-speed), which supersedes the first
 implementation of this reversal.
 
-> **Transitional state.** The first version of this reversal shipped four
-> vocabulary *tiers* in `src/prompt-lists.js`, selectable with a `?tier=`
-> parameter. That approach was rejected: the difficulty scoring already favours
-> the keys taught first, so tiers restate the curriculum somewhere it has to be
-> kept in sync, and impose steps where a gradient is wanted. The tier code is
-> still what `main.js` serves, and comes out when D6 is integrated. Do not
-> extend it. D6's rejected-alternatives table has the full reasoning.
+> **A transitional implementation, now removed.** The first version of this
+> reversal shipped four vocabulary *tiers* in `src/prompt-lists.js`, selectable
+> with a `?tier=` parameter. That approach was rejected: the difficulty scoring
+> already favours the keys taught first, so tiers restate the curriculum
+> somewhere it has to be kept in sync, and impose steps where a gradient is
+> wanted. `prompt-lists.js` and `prompt-trainer.js` were deleted when D6 was
+> integrated on 2026-09-20; the game now serves the scored vocabulary. D6's
+> rejected-alternatives table keeps the full reasoning, because the tier idea
+> is an obvious one to have again.
 
 ---
 
@@ -188,9 +190,12 @@ depends on it.
 ## D6 — Prompt difficulty adapts to typing speed
 
 - **Date:** 2026-09-19
-- **Status:** **Decided and built, not yet integrated.** The modules exist with
-  tests; `main.js` still serves the tier list from D1 until the integration
-  lands.
+- **Status:** **Active — integrated 2026-09-20.** `main.js` serves the scored
+  vocabulary and adapts to measured typing pace. The tier machinery it replaced
+  (`prompt-lists.js`, `prompt-trainer.js`, `?tier=`) is deleted.
+
+  The crossing below is therefore live, not prospective: the game now measures
+  typing speed and varies difficulty by it.
 - **Crosses:** `design-v1.md:276`, "Explicit non-goals (v1)", first item —
   *"Typing speed measurement or adaptive difficulty."*
 
@@ -230,6 +235,45 @@ included rather than filtered out — fumbling is exactly what should pull
 difficulty down. The target rises faster than it falls, so one distracted word
 does not undo a good run. Nothing is displayed: no timer, no score, no
 readout. The only observable effect is which words appear next.
+
+### How it is wired, 2026-09-20
+
+The order matters, and it is the one thing a reader of `main.js` could get
+wrong: **sample, then estimate, then select, then show.**
+
+1. `render()` draws the whole visible set at `estimate.target` and then calls
+   `promptsShown`. Rendering is what re-rolls the prompts, so rendering is what
+   starts the clock.
+2. `handleKeydown` calls `keyPressed` for every edit that actually changes the
+   buffer — characters and backspaces alike. `TypingEngine.append` and
+   `.backspace` return whether they changed anything, so a backspace on an
+   empty buffer or a character past the 15-char cap is not mistaken for typing.
+   Enter never extends the window.
+3. `handleAction` calls `completed` **first**, before `applyAction` and before
+   the render that re-rolls. The sample therefore describes the word she
+   actually typed, and the new target is in place before the next set is drawn.
+
+The shell reads the clock — that is I/O — and passes timestamps in. Every rule
+about what the numbers mean stays in `typing-recorder.js` and
+`typing-estimate.js`, which are pure and tested. `main.js` has no test coverage
+by [D4](#d4--canvas-and-dom-code-is-intentionally-untested), so it holds as
+little judgement as possible.
+
+**The estimate survives a new island but not a reload.** Within one page load
+she is the same typist, and re-climbing from the starting target after every
+win would waste the first minutes of each island. Reloading is how to start
+over, which is cheap and needs no UI.
+
+**The only trace of the measurement is a `console.debug` line per completed
+prompt**, giving the word, the pace and the new target. Nothing reaches the
+screen — no timer, no score, no readout. The console line exists because
+calibrating `fastIntervalMs` / `slowIntervalMs` against a real session is an
+open task with nothing to work from otherwise.
+
+Verified in a real browser before landing: typing fast raised the target 1.30 →
+2.50 over eight prompts and the screen moved from `fl, fjj, djs, ksl` to `up,
+david, mail, forms`; typing slowly brought it back down; a deliberately fumbled
+word scored 246ms/key against the 120ms/key it was typed at.
 
 ### Rejected alternatives
 

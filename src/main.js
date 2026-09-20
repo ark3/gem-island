@@ -10,8 +10,11 @@ import {
   isFeatureVisible,
 } from "./island-engine.js";
 import { createPromptService } from "./prompt-service.js";
-import { createPromptTrainer } from "./prompt-trainer.js";
-import { DEFAULT_TIER, getPromptTier } from "./prompt-lists.js";
+import { buildVocabulary } from "./prompt-vocabulary.js";
+import { WORD_CORPUS } from "./data/word-corpus.js";
+import { NONSENSE_POOL } from "./data/nonsense-pool.js";
+import { createTypingEstimate, recordSample } from "./typing-estimate.js";
+import { completed, createRecorder, keyPressed, promptsShown } from "./typing-recorder.js";
 import {
   DIRECTION_VECTORS,
   clearSceneCache,
@@ -44,28 +47,31 @@ const elements = {
   map: document.querySelector("[data-map]"),
 };
 
-// Which typing vocabulary to serve. Defaults to the home row, matching where a
-// beginning touch typist starts; override with ?tier=home-top-words (and so on)
-// as more of the keyboard is taught. See src/prompt-lists.js for the tiers.
-function resolvePromptTier() {
-  let requested = DEFAULT_TIER;
-  try {
-    requested = new URLSearchParams(window.location.search).get("tier") ?? DEFAULT_TIER;
-  } catch {
-    // No URL to read (or a hostile one); the default tier is always playable.
-  }
-  const tier = getPromptTier(requested);
-  console.info(`Gem Island prompts: ${tier.label} (${tier.prompts.length} prompts)`);
-  return tier;
-}
-
 let engine = null;
 let island = null;
 let state = null;
-const promptTier = resolvePromptTier();
-const promptService = createPromptService({
-  trainer: createPromptTrainer({ prompts: promptTier.prompts }),
-});
+
+// Prompts. The whole vocabulary is always available -- there is no tier, no
+// letter filter and no setting. Difficulty is a property of the string, so
+// keys she has not been taught score high and simply do not surface while the
+// target is low. Scored once at boot; it never changes after that.
+const vocabulary = buildVocabulary({ words: WORD_CORPUS, nonsense: NONSENSE_POOL });
+const promptService = createPromptService({ vocabulary });
+
+// How hard the next screenful should be, and the timing window feeding it.
+// Both live here because the clock is I/O: every rule about what the numbers
+// mean is in typing-estimate.js and typing-recorder.js, which stay pure.
+//
+// Neither survives a reload, by design. Within one page load the estimate
+// does survive a new island, because she is the same typist either way and
+// re-climbing from the starting target after every win would waste the first
+// minutes of each island. Reloading is the way to start over.
+let estimate = createTypingEstimate();
+let recorder = createRecorder();
+
+function now() {
+  return performance.now();
+}
 
 let lastSceneNode = null;
 let lastSceneActions = [];
@@ -106,6 +112,12 @@ function render() {
   if (engine) {
     engine.setActions(actions.filter((action) => !action.isCompleted));
   }
+
+  // Rendering is what re-rolls the prompts, so it is what starts the clock.
+  // Everything before her first keystroke -- reading the screen, deciding
+  // where to go, looking at the scenery -- lands in the first-keypress delay,
+  // which the estimate caps and weights low.
+  recorder = promptsShown(recorder, { at: now() });
 }
 
 function formatCount(count, singular, plural = `${singular}s`) {
@@ -134,12 +146,13 @@ function getRenderableActions(node) {
   if (state.status === "success") {
     return [{ ...SUCCESS_ACTION, isCompleted: false }];
   }
-  const usedPrompts = new Set();
-  return getVisibleActions(island, state, node).map((action) => {
-    const prompt = promptService.getPrompt(action.id, usedPrompts);
-    usedPrompts.add(prompt);
-    return { ...action, prompt };
-  });
+  // Every visible action gets a prompt, completed ones included, because the
+  // renderer draws a label for each. They are drawn as one set at a single
+  // difficulty rather than one at a time, so which one she picks is a choice
+  // about where to go, never about how hard to work.
+  const actions = getVisibleActions(island, state, node);
+  const prompts = promptService.nextPrompts(actions.length, estimate.target);
+  return actions.map((action, index) => ({ ...action, prompt: prompts[index] }));
 }
 
 // ============================================================================
@@ -333,6 +346,17 @@ function beginTransition(direction) {
 function handleAction(action) {
   if (!action) return;
 
+  // Close the timing window first: this runs before applyAction and before
+  // the render that re-rolls the prompts, so the sample describes the word
+  // she actually typed and the new target is in place before the next set is
+  // drawn. Sample, then estimate, then select, then show.
+  const finished = completed(recorder, { prompt: action.prompt });
+  recorder = finished.recorder;
+  if (finished.sample) {
+    estimate = recordSample(estimate, finished.sample);
+    logSample(action.prompt, finished.sample);
+  }
+
   if (state.status === "success" && action.id === SUCCESS_ACTION.id) {
     showActivation("Starting a new island!", "success");
     restartIsland();
@@ -368,7 +392,6 @@ function handleAction(action) {
 
   const result = applyAction(island, state, action.id);
   state = result.state;
-  promptService.refresh(action.id);
 
   result.events?.forEach((event) => {
     if (event.type === "toast") {
@@ -386,14 +409,24 @@ function handleKeydown(event) {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   if (!engine) return;
 
+  // Read the clock once, at the top: the keystroke happened when the key was
+  // pressed, not after the renderer has finished with it.
+  const at = now();
+
   if (event.key === "Backspace") {
     event.preventDefault();
-    engine.backspace();
+    // Backspaces count as typing. A match can be reached by deleting back to
+    // it, so the last edit before a word completes is not always a character.
+    // A backspace on an empty buffer changes nothing and is not typing, which
+    // is what the return value distinguishes.
+    if (engine.backspace()) recorder = keyPressed(recorder, { at });
     return;
   }
 
   if (event.key === "Enter") {
     event.preventDefault();
+    // Enter is not typing, so it does not extend the window. It is a separate,
+    // deliberate act, and a pause before pressing it is not time spent typing.
     if (!engine.activateMatch()) {
       showActivation("That is not one of the words. Try again!", "error");
     }
@@ -404,7 +437,7 @@ function handleKeydown(event) {
     event.preventDefault();
     clearActivation();
     clearToast();
-    engine.append(event.key);
+    if (engine.append(event.key)) recorder = keyPressed(recorder, { at });
   }
 }
 
@@ -467,6 +500,23 @@ function boot() {
 }
 
 boot();
+
+/**
+ * The console is the only place the measurement is ever visible. Nothing
+ * reaches the screen -- no timer, no score, no readout -- so this is what
+ * there is to tune against after a real session, and the open task to
+ * calibrate `fastIntervalMs` / `slowIntervalMs` has nothing to work from
+ * without it.
+ */
+function logSample(prompt, sample) {
+  const perKey = Math.round(sample.typingMs / (sample.keyCount - 1));
+  console.debug(
+    `Gem Island pace: "${prompt}" ${perKey}ms/key ` +
+      `(${Math.round(sample.typingMs)}ms over ${sample.keyCount} keys, ` +
+      `${sample.firstKeypressMs == null ? "no" : Math.round(sample.firstKeypressMs) + "ms"} lead-in) ` +
+      `-> target ${estimate.target.toFixed(2)} after ${estimate.samples}`,
+  );
+}
 
 function logIsland(seed, islandData) {
   if (!islandData) return;

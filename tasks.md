@@ -19,9 +19,10 @@ _Last reconciled against `main`: 2026-09-19._
 
 ## Now
 
-- [ ] **Hook the adaptive prompts into the game.** The scoring, vocabulary,
-      selection and estimator all exist as pure modules with tests; nothing is
-      wired up. See *Track: Typing Progression*.
+- [ ] **Play a real session and tune from it.** The adaptive prompts are live;
+      every remaining question in *Track: Typing Progression* needs her, not
+      more analysis. A `console.debug` line per prompt gives the word, the pace
+      and the new target — that is the data to collect.
 - [ ] **Headless smoke test in CI.** Blocked on a dependency decision. See
       *Track: Infrastructure*. Note that `tools/gallery.html` now covers part of
       the gap by eye, with no dependency.
@@ -29,6 +30,7 @@ _Last reconciled against `main`: 2026-09-19._
 _Cleared 2026-09-18: infra refresh, PR #2 decision._
 _Cleared 2026-09-19: the visual overhaul — see *Track: Rendering and Visuals*._
 _Cleared 2026-09-19: word prompts (D1 reversed); difficulty model and adaptation._
+_Cleared 2026-09-20: adaptive prompts integrated; tier machinery deleted._
 
 ---
 
@@ -44,8 +46,9 @@ Nothing is shown to the player: no timer, no score, no readout. The only
 observable effect is which words appear next. `design-v1.md:276` lists "typing
 speed measurement or adaptive difficulty" as an explicit v1 non-goal; crossing
 it is deliberate, because it had nothing to act on while a single keypress was
-itself the challenge. **That decision gets written up in `docs/decisions.md`
-when the integration lands** — until then the code does not yet diverge.
+itself the challenge. That crossing is recorded in
+[D6](docs/decisions.md#d6--prompt-difficulty-adapts-to-typing-speed) and, as of
+2026-09-20, is live rather than prospective.
 
 - [x] Reverse [D1](docs/decisions.md#d1--typing-prompts-are-single-letters-not-words):
       word prompts replace single letters.
@@ -71,12 +74,16 @@ when the integration lands** — until then the code does not yet diverge.
       the engine keeps matching as its only job. `keyCount` is the matched
       prompt's length, not the number of keys pressed, so a correction reads as
       slowness instead of being normalised away.
-- [ ] **Integrate.** Drive the recorder from `main.js` (`promptsShown` on
-      render, `keyPressed` on each edit, `completed` on activation), hold the
-      estimate in session state, and select prompts from the vocabulary.
-      Removes the tier machinery (`src/prompt-lists.js`, the `?tier=`
-      parameter) and rewrites D1's reversal section, which currently describes
-      the tiers.
+- [x] **Integrate.** The recorder is driven from `main.js` (`promptsShown` on
+      render, `keyPressed` on each edit that changes the buffer, `completed`
+      before the state change on activation); the estimate lives in session
+      state and prompts are drawn from the scored vocabulary at its target.
+      `prompt-lists.js`, `prompt-trainer.js` and `?tier=` are deleted,
+      `prompt-service.js` is rebuilt around set-at-a-time selection, and
+      `TypingEngine.append` / `.backspace` now report whether they changed the
+      buffer so a no-op keystroke is not counted as typing. D1's reversal
+      section and D6's status are rewritten to match; D6 gains a *How it is
+      wired* section. Verified in a real browser, not only under `node --test`.
 - [x] **Decide the nonsense mix before or after her first session.** After:
       leave the familiarity weight at 1.0 until she plays. The 86% figure that
       prompted the question turned out to be an artifact of the simulated
@@ -95,7 +102,13 @@ when the integration lands** — until then the code does not yet diverge.
 - [ ] Replace or augment the frequency corpus. It is web-derived, so it lacks
       "dad" entirely while ranking "administration" highly. An age-of-acquisition
       or early-reader list would fit the player far better.
-- [ ] Either implement or remove the no-op stubs in `prompt-service.js`.
+- [x] Either implement or remove the no-op stubs in `prompt-service.js`.
+      Removed — `refresh()` and `peek()` are gone with the rewrite.
+- [ ] `discarded()` in `typing-recorder.js` has no caller. The shell never
+      needs it, because every path that should close the window ends in a
+      render, and `promptsShown` opens a fresh one. It is a reasonable part of
+      a reducer API and it is tested, but an exported function with no caller
+      should either find one or go.
 
 ## Track: Rendering and Visuals
 

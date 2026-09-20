@@ -159,14 +159,12 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **`src/quest-catalog.js`** — quest definitions (discover and collect types)
 - **`src/features.js`** — visual feature rendering (gems, people, ship)
 - **`src/explorer.js`** — player character art
-- **`src/prompt-service.js`** — assigns typing prompts to actions
-- **`src/prompt-trainer.js`** — chooses which prompt to serve next
-- **`src/prompt-lists.js`** — **superseded**; the tier vocabularies `main.js`
-  still serves. Removed when the scored vocabulary is integrated. Do not extend.
+- **`src/prompt-service.js`** — draws the whole on-screen set of prompts at one
+  difficulty, and remembers what was shown recently
 - **`src/island-utils.js`**, **`src/island.manual.js`** — shared helpers and a
   hand-built island used by tests
 
-**Typing difficulty** (pure, built but not yet wired into the game — see
+**Typing difficulty** (pure; wired into the game via `main.js` — see
 `docs/decisions.md`, D6):
 
 - **`src/typing-difficulty.js`** — scores how hard a string is to type, from
@@ -183,7 +181,10 @@ The codebase follows a **functional core, imperative shell** pattern.
 - **`scripts/`** — maintenance tools, not a build step. The game never needs
   them. `build-vocabulary.mjs` regenerates `src/data/`;
   `analyze-difficulty.mjs` prints score distributions and sample sessions for
-  tuning weights against real output.
+  tuning weights against real output; `simulate-session.mjs` plays a whole
+  session against a simulated player, so pathologies turn up there rather than
+  in front of a child. Treat its player model as the guess it is — see D6's
+  2026-09-20 correction for what happens when you forget that.
 
 **Tools:**
 
